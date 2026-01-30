@@ -5,9 +5,8 @@ from pptx.util import Inches, Pt
 from pptx.enum.text import PP_ALIGN
 from pptx.dml.color import RGBColor
 import io
-import random
 
-# Page config
+# ---------------- PAGE CONFIG ----------------
 st.set_page_config(
     page_title="Genis 2.0 - Slideshow Generator",
     page_icon="🎯",
@@ -15,223 +14,252 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# ── Custom CSS (unchanged) ──
+# ---------------- STYLES ----------------
 st.markdown("""
 <style>
-    /* ... your existing CSS ... */
+[data-testid="stSidebar"] {
+    min-width: 300px !important;
+    max-width: 300px !important;
+}
+.block-container {
+    max-width: 900px !important;
+}
+.big-title {
+    text-align: center;
+    font-size: 3.5rem;
+    font-weight: bold;
+    background: linear-gradient(90deg, #667eea, #764ba2);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+.subtitle {
+    text-align: center;
+    font-size: 1.3rem;
+    color: #666;
+}
+.stButton > button {
+    width: 100%;
+    height: 3.5rem;
+    font-size: 1.3rem;
+    font-weight: bold;
+    background: linear-gradient(90deg, #667eea, #764ba2);
+    color: white;
+    border-radius: 10px;
+}
 </style>
 """, unsafe_allow_html=True)
 
-# Get API key from secrets
+# ---------------- API ----------------
 try:
-    api_key = st.secrets["GROQ_API_KEY"]
-    client = Groq(api_key=api_key)
+    client = Groq(api_key=st.secrets["GROQ_API_KEY"])
     api_available = True
 except:
     api_available = False
 
-# Initialize session state for examples
-if "example_prompts" not in st.session_state:
-    st.session_state.example_prompts = []
+# ---------------- SIDEBAR ----------------
+with st.sidebar:
+    st.markdown("## 🎯 Genis 2.0")
+    st.markdown("Professional slideshow generator")
+    st.markdown("---")
+    st.markdown("**Limits**")
+    st.info("Min: 5 slides\nMax: 100 slides")
+    st.markdown("---")
+    st.success("✅ System Ready" if api_available else "❌ API Not Configured")
 
-# ── NEW: Name input (placed near the topic input for good UX) ──
-st.markdown("### 👤 Your Name (optional)")
-presenter_name = st.text_input(
-    "Enter your name to appear on the title slide",
-    placeholder="e.g. Bogdan Smith",
-    value="",
+# ---------------- MAIN ----------------
+st.markdown('<div class="big-title">🎯 Genis 2.0</div>', unsafe_allow_html=True)
+st.markdown('<div class="subtitle">Professional Slideshow Generator</div>', unsafe_allow_html=True)
+st.markdown("---")
+
+# ---------------- INPUTS ----------------
+topic = st.text_area(
+    "Slideshow topic",
+    placeholder="Create a 10-slide presentation about artificial intelligence",
+    height=100,
     label_visibility="collapsed"
 )
 
-# Sidebar (unchanged)
-with st.sidebar:
-    st.markdown("## 🎯 Genis 2.0")
-    st.markdown("---")
-    # ... rest of sidebar unchanged ...
+st.markdown("### 👤 Your Name (optional)")
+author_name = st.text_input(
+    "Your name",
+    placeholder="e.g. Alex Johnson",
+    label_visibility="collapsed"
+)
 
-# Main content
-st.markdown('<div class="big-title">🎯 Genis 2.0</div>', unsafe_allow_html=True)
-st.markdown('<div class="subtitle">Professional Slideshow Generator</div>', unsafe_allow_html=True)
-
-# Example prompts generation (unchanged)
-# ... your existing example prompts code ...
-
-# Input field
-st.markdown("### 📝 What would you like to create?")
-
-default_value = st.session_state.get("user_topic", "")
-if default_value:
-    topic = st.text_area(
-        "Describe your slideshow:",
-        value=default_value,
-        placeholder="Example: Create a 10-slide presentation about climate change",
-        height=100,
-        label_visibility="collapsed"
-    )
-    if "user_topic" in st.session_state:
-        del st.session_state.user_topic
-else:
-    topic = st.text_area(
-        "Describe your slideshow:",
-        placeholder="Example: Create a 10-slide presentation about climate change",
-        height=100,
-        label_visibility="collapsed"
-    )
-
-# Advanced options (unchanged)
 with st.expander("⚙️ Advanced Options"):
     col1, col2 = st.columns(2)
     with col1:
-        num_slides = st.number_input(
-            "Number of slides",
-            min_value=5,
-            max_value=100,
-            value=10,
-            help="Choose between 5 and 100 slides"
-        )
+        num_slides = st.number_input("Number of slides", 5, 100, 10)
     with col2:
         style = st.selectbox(
-            "Presentation style",
+            "Style",
             ["Professional", "Creative", "Educational", "Minimal", "Bold", "Modern"]
         )
 
-# Generate button
+# ---------------- GENERATE ----------------
 if st.button("🚀 Generate Slideshow"):
     if not api_available:
-        st.error("❌ System not configured. Please contact administrator.")
-    elif not topic or len(topic.strip()) < 10:
-        st.warning("⚠️ Please enter a more detailed topic for your slideshow.")
+        st.error("API not configured.")
+    elif not topic.strip():
+        st.warning("Please enter a topic.")
     else:
-        progress_bar = st.progress(0)
-        status_text = st.empty()
+        progress = st.progress(0)
 
-        try:
-            # ── Your existing prompt generation ──
-            enhanced_prompt = f"""Create slideshow content about: "{topic}"
-Requirements:
-- Number of slides: {num_slides}
-- Style: {style}
-Provide content in this EXACT format:
+        prompt = f"""
+Create slideshow content about: "{topic}"
+
+Rules:
+- Exactly {num_slides} slides
+- Clear titles and bullet points
+- First slide is a title slide
+- Last slide is a conclusion
+
+FORMAT STRICTLY AS:
+
 SLIDE 1:
-TITLE: [Compelling title for the presentation]
+TITLE: Title here
 CONTENT:
-- [This is the title slide, no bullet points needed]
+- No bullets
+
 SLIDE 2:
-..."""  # (rest unchanged)
+TITLE: Title
+CONTENT:
+- Bullet
+- Bullet
 
-            # Generate content from Groq (unchanged)
-            status_text.text("🧠 Generating content...")
-            progress_bar.progress(35)
-            chat_completion = client.chat.completions.create(
-                messages=[{"role": "user", "content": enhanced_prompt}],
-                model="llama-3.3-70b-versatile",
-                temperature=0.7,
-                max_tokens=8000,
-            )
-            response_text = chat_completion.choices[0].message.content
+Continue until slide {num_slides}.
+"""
 
-            # Parse slides (unchanged)
-            lines = response_text.split('\n')
-            slides_data = []
-            current_slide = None
-            for line in lines:
-                line = line.strip()
-                if line.startswith('SLIDE '):
-                    if current_slide:
-                        slides_data.append(current_slide)
-                    current_slide = {"title": "", "content": []}
-                elif line.startswith('TITLE:'):
-                    if current_slide is not None:
-                        current_slide["title"] = line.replace('TITLE:', '').strip()
-                elif (line.startswith('- ') or line.startswith('• ')) and current_slide is not None:
-                    current_slide["content"].append(line[2:].strip())
-            if current_slide:
-                slides_data.append(current_slide)
+        progress.progress(25)
 
-            if not slides_data:
-                st.error("❌ Failed to generate slideshow. Please try again.")
-                progress_bar.empty()
-                status_text.empty()
+        response = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.7,
+            max_tokens=8000
+        )
+
+        progress.progress(50)
+
+        # ---------------- PARSE ----------------
+        slides = []
+        current = None
+
+        for line in response.choices[0].message.content.splitlines():
+            line = line.strip()
+            if line.startswith("SLIDE"):
+                if current:
+                    slides.append(current)
+                current = {"title": "", "content": []}
+            elif line.startswith("TITLE:"):
+                current["title"] = line.replace("TITLE:", "").strip()
+            elif line.startswith("- "):
+                current["content"].append(line[2:].strip())
+
+        if current:
+            slides.append(current)
+
+        if not slides:
+            st.error("Failed to generate slides.")
+            st.stop()
+
+        progress.progress(75)
+
+        # ---------------- PPT ----------------
+        prs = Presentation()
+        prs.slide_width = Inches(10)
+        prs.slide_height = Inches(5.625)
+
+        schemes = {
+            "Professional": (RGBColor(25, 50, 100), RGBColor(66, 135, 245)),
+            "Creative": (RGBColor(255, 87, 51), RGBColor(255, 195, 0)),
+            "Educational": (RGBColor(46, 125, 50), RGBColor(139, 195, 74)),
+            "Minimal": (RGBColor(33, 33, 33), RGBColor(120, 120, 120)),
+            "Bold": (RGBColor(211, 47, 47), RGBColor(245, 124, 0)),
+            "Modern": (RGBColor(102, 126, 234), RGBColor(118, 75, 162))
+        }
+
+        DARK, ACCENT = schemes[style]
+        WHITE = RGBColor(255, 255, 255)
+        GRAY = RGBColor(80, 80, 80)
+
+        for i, s in enumerate(slides):
+            slide = prs.slides.add_slide(prs.slide_layouts[6])
+
+            if i == 0:
+                bg = slide.shapes.add_shape(
+                    1, 0, 0, prs.slide_width, prs.slide_height
+                )
+                bg.fill.solid()
+                bg.fill.fore_color.rgb = DARK
+
+                title_box = slide.shapes.add_textbox(
+                    Inches(1), Inches(2), Inches(8), Inches(1.5)
+                )
+                tf = title_box.text_frame
+                tf.text = s["title"]
+                p = tf.paragraphs[0]
+                p.font.size = Pt(48)
+                p.font.bold = True
+                p.font.color.rgb = WHITE
+                p.alignment = PP_ALIGN.CENTER
+
+                if author_name.strip():
+                    author_box = slide.shapes.add_textbox(
+                        Inches(1), Inches(3.7), Inches(8), Inches(0.6)
+                    )
+                    atf = author_box.text_frame
+                    atf.text = f"By {author_name.strip()}"
+                    ap = atf.paragraphs[0]
+                    ap.font.size = Pt(20)
+                    ap.font.color.rgb = ACCENT
+                    ap.alignment = PP_ALIGN.CENTER
+
             else:
-                status_text.text("🎨 Designing presentation...")
-                progress_bar.progress(75)
+                bar = slide.shapes.add_shape(
+                    1, 0, 0, prs.slide_width, Inches(0.2)
+                )
+                bar.fill.solid()
+                bar.fill.fore_color.rgb = ACCENT
 
-                prs = Presentation()
-                prs.slide_width = Inches(10)
-                prs.slide_height = Inches(5.625)
+                title_box = slide.shapes.add_textbox(
+                    Inches(0.5), Inches(0.5), Inches(9), Inches(1)
+                )
+                tf = title_box.text_frame
+                tf.text = s["title"]
+                tf.paragraphs[0].font.size = Pt(34)
+                tf.paragraphs[0].font.bold = True
+                tf.paragraphs[0].font.color.rgb = DARK
 
-                # Color schemes (unchanged)
-                color_schemes = { ... }  # your existing dict
-                DARK_COLOR, ACCENT_COLOR = color_schemes.get(style, color_schemes["Professional"])
-                WHITE = RGBColor(255, 255, 255)
-                GRAY = RGBColor(80, 80, 80)
+                content_box = slide.shapes.add_textbox(
+                    Inches(1.2), Inches(1.8), Inches(7.6), Inches(3)
+                )
+                ctf = content_box.text_frame
 
-                for idx, slide_data in enumerate(slides_data):
-                    blank_layout = prs.slide_layouts[6]
-                    slide = prs.slides.add_slide(blank_layout)
+                for point in s["content"]:
+                    p = ctf.add_paragraph()
+                    p.text = point
+                    p.font.size = Pt(20)
+                    p.font.color.rgb = GRAY
 
-                    if idx == 0:
-                        # ── Title slide ──
-                        background = slide.shapes.add_shape(
-                            1, 0, 0, prs.slide_width, prs.slide_height
-                        )
-                        background.fill.solid()
-                        background.fill.fore_color.rgb = DARK_COLOR
-                        background.line.fill.background()
+        progress.progress(100)
 
-                        title_box = slide.shapes.add_textbox(
-                            Inches(1), Inches(1.8), Inches(8), Inches(1.8)
-                        )
-                        title_frame = title_box.text_frame
-                        title_frame.text = slide_data["title"]
-                        title_frame.word_wrap = True
-                        title_para = title_frame.paragraphs[0]
-                        title_para.font.size = Pt(48)
-                        title_para.font.bold = True
-                        title_para.font.color.rgb = WHITE
-                        title_para.alignment = PP_ALIGN.CENTER
+        buffer = io.BytesIO()
+        prs.save(buffer)
+        buffer.seek(0)
 
-                        # ── CHANGED: Show presenter's name instead of "Created with Genis 2.0" ──
-                        if presenter_name.strip():
-                            credit_text = f"by {presenter_name.strip()}"
-                        else:
-                            credit_text = ""   # nothing if left empty
+        st.success("🎉 Slideshow ready!")
+        st.download_button(
+            "📥 Download Presentation",
+            buffer.getvalue(),
+            file_name="presentation.pptx",
+            mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            use_container_width=True
+        )
 
-                        subtitle_box = slide.shapes.add_textbox(
-                            Inches(1), Inches(3.8), Inches(8), Inches(0.5)
-                        )
-                        subtitle_frame = subtitle_box.text_frame
-                        subtitle_frame.text = credit_text
-                        subtitle_para = subtitle_frame.paragraphs[0]
-                        subtitle_para.font.size = Pt(20)
-                        subtitle_para.font.color.rgb = ACCENT_COLOR
-                        subtitle_para.alignment = PP_ALIGN.CENTER
-
-                    else:
-                        # Content slides (unchanged)
-                        # ... your existing code for content slides ...
-
-                # Save and offer download (unchanged, except possibly filename)
-                pptx_bytes = io.BytesIO()
-                prs.save(pptx_bytes)
-                pptx_bytes.seek(0)
-
-                progress_bar.progress(100)
-                progress_bar.empty()
-                status_text.empty()
-
-                st.balloons()
-                st.success(f"🎉 **Success!** Your {len(slides_data)}-slide presentation is ready!")
-
-                # Stats and download (unchanged)
-                # ... your columns + download_button ...
-
-        except Exception as e:
-            progress_bar.empty()
-            status_text.empty()
-            st.error(f"❌ Error: {str(e)}")
-            st.info("Please try again or rephrase your topic.")
-
-# Footer (unchanged)
+# ---------------- FOOTER ----------------
 st.markdown("---")
-# ... your footer markdown ...
+st.markdown(
+    "<div style='text-align:center;color:#666;'>© 2025 Genis 2.0</div>",
+    unsafe_allow_html=True
+)
