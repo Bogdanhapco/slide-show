@@ -5,7 +5,9 @@ from pptx.util import Inches, Pt
 from pptx.enum.text import PP_ALIGN
 from pptx.dml.color import RGBColor
 import io
-import random
+import requests
+from PIL import Image
+from io import BytesIO
 
 # Page config
 st.set_page_config(
@@ -18,13 +20,11 @@ st.set_page_config(
 # Custom CSS
 st.markdown("""
 <style>
-    /* Force sidebar to always show on left */
     [data-testid="stSidebar"] {
         min-width: 300px !important;
         max-width: 300px !important;
     }
     
-    /* Center main content */
     .block-container {
         max-width: 900px !important;
         padding-left: 2rem;
@@ -73,6 +73,16 @@ st.markdown("""
         border-left: 4px solid #667eea;
         margin: 1rem 0;
     }
+    
+    .color-preview {
+        display: inline-block;
+        width: 20px;
+        height: 20px;
+        border-radius: 3px;
+        margin-right: 8px;
+        vertical-align: middle;
+        border: 1px solid #ddd;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -90,6 +100,62 @@ if "example_prompts" not in st.session_state:
 if "selected_example" not in st.session_state:
     st.session_state.selected_example = ""
 
+# Color themes
+COLOR_THEMES = {
+    "Blue Ocean 🌊": {
+        "dark": RGBColor(25, 50, 100),
+        "accent": RGBColor(66, 135, 245),
+        "preview": "#1a3264"
+    },
+    "Forest Green 🌲": {
+        "dark": RGBColor(27, 94, 32),
+        "accent": RGBColor(102, 187, 106),
+        "preview": "#1b5e20"
+    },
+    "Sunset Orange 🌅": {
+        "dark": RGBColor(191, 54, 12),
+        "accent": RGBColor(255, 152, 0),
+        "preview": "#bf360c"
+    },
+    "Royal Purple 👑": {
+        "dark": RGBColor(74, 20, 140),
+        "accent": RGBColor(156, 39, 176),
+        "preview": "#4a148c"
+    },
+    "Ruby Red 💎": {
+        "dark": RGBColor(183, 28, 28),
+        "accent": RGBColor(244, 67, 54),
+        "preview": "#b71c1c"
+    },
+    "Midnight Black 🌙": {
+        "dark": RGBColor(33, 33, 33),
+        "accent": RGBColor(97, 97, 97),
+        "preview": "#212121"
+    },
+    "Teal Wave 🏄": {
+        "dark": RGBColor(0, 77, 64),
+        "accent": RGBColor(0, 150, 136),
+        "preview": "#004d40"
+    },
+    "Pink Blossom 🌸": {
+        "dark": RGBColor(136, 14, 79),
+        "accent": RGBColor(233, 30, 99),
+        "preview": "#880e4f"
+    }
+}
+
+def get_unsplash_image(query, orientation="landscape"):
+    """Fetch image from Unsplash API"""
+    try:
+        # Unsplash Source API (no key needed for basic usage)
+        url = f"https://source.unsplash.com/1600x900/?{query}"
+        response = requests.get(url, timeout=10)
+        if response.status_code == 200:
+            return BytesIO(response.content)
+        return None
+    except:
+        return None
+
 # Sidebar
 with st.sidebar:
     st.markdown("## 🎯 Genis 2.0")
@@ -97,9 +163,9 @@ with st.sidebar:
     
     st.markdown("### ⚡ Features")
     st.markdown("""
-    - 🎨 Professional designs
-    - 📊 Custom layouts
-    - 🎯 AI-powered content
+    - 🎨 Custom color themes
+    - 🖼️ AI-powered images
+    - 📊 Professional layouts
     - 📱 Mobile compatible
     - 💾 Instant download
     """)
@@ -197,7 +263,7 @@ author_name = st.text_input(
 
 st.markdown("### 📝 What would you like to create?")
 
-# Topic input - use selected example if available
+# Topic input
 if st.session_state.selected_example:
     topic = st.text_area(
         "Describe your slideshow:",
@@ -217,8 +283,9 @@ else:
     )
 
 # Advanced options
-with st.expander("⚙️ Advanced Options"):
+with st.expander("⚙️ Customization Options", expanded=True):
     col1, col2 = st.columns(2)
+    
     with col1:
         num_slides = st.number_input(
             "Number of slides", 
@@ -227,15 +294,39 @@ with st.expander("⚙️ Advanced Options"):
             value=10,
             help="Choose between 5 and 100 slides"
         )
-    with col2:
+        
         style = st.selectbox(
             "Presentation style",
             ["Professional", "Creative", "Educational", "Minimal", "Bold", "Modern"]
         )
+    
+    with col2:
+        # Color theme selector with preview
+        st.markdown("**Color Theme**")
+        selected_theme = st.selectbox(
+            "Choose your color scheme",
+            list(COLOR_THEMES.keys()),
+            label_visibility="collapsed"
+        )
+        
+        # Show color preview
+        theme_colors = COLOR_THEMES[selected_theme]
+        st.markdown(f"""
+        <div style="margin-top: 10px;">
+            <span class="color-preview" style="background-color: {theme_colors['preview']};"></span>
+            <span style="font-size: 0.9rem; color: #666;">Selected theme preview</span>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Image option
+        add_images = st.checkbox(
+            "🖼️ Add AI-powered images to slides",
+            value=True,
+            help="Automatically adds relevant images from Unsplash"
+        )
 
 # Generate button
 if st.button("🚀 Generate Slideshow"):
-    # Clear the selected example after generation attempt
     st.session_state.selected_example = ""
     
     if not api_available:
@@ -245,7 +336,6 @@ if st.button("🚀 Generate Slideshow"):
     elif not author_name or len(author_name.strip()) < 2:
         st.warning("⚠️ Please enter your name to continue.")
     else:
-        # Progress indicator
         progress_bar = st.progress(0)
         status_text = st.empty()
         
@@ -275,18 +365,12 @@ CONTENT:
 - [Bullet point 2]
 - [Bullet point 3]
 
-SLIDE 3:
-TITLE: [Slide title]
-CONTENT:
-- [Bullet point 1]
-- [Bullet point 2]
-
 Continue for all {num_slides} slides. Last slide should be a strong conclusion.
 Make content informative, engaging, and well-structured."""
 
             # Step 2: Generating content
             status_text.text("🧠 Generating content...")
-            progress_bar.progress(35)
+            progress_bar.progress(25)
             
             chat_completion = client.chat.completions.create(
                 messages=[{"role": "user", "content": enhanced_prompt}],
@@ -299,9 +383,8 @@ Make content informative, engaging, and well-structured."""
             
             # Step 3: Parsing content
             status_text.text("📊 Structuring slides...")
-            progress_bar.progress(55)
+            progress_bar.progress(40)
             
-            # Parse response
             lines = response_text.split('\n')
             slides_data = []
             current_slide = None
@@ -322,30 +405,41 @@ Make content informative, engaging, and well-structured."""
                 slides_data.append(current_slide)
             
             if not slides_data:
-                st.error("❌ Failed to generate slideshow. Please try again with a different topic.")
+                st.error("❌ Failed to generate slideshow. Please try again.")
                 progress_bar.empty()
                 status_text.empty()
             else:
-                # Step 4: Creating presentation
-                status_text.text("🎨 Designing presentation...")
-                progress_bar.progress(75)
+                # Step 4: Fetching images (if enabled)
+                image_data = {}
+                if add_images:
+                    status_text.text("🖼️ Finding perfect images...")
+                    progress_bar.progress(55)
+                    
+                    # Extract main topic for image search
+                    topic_keywords = topic.split()[:3]
+                    search_query = " ".join(topic_keywords)
+                    
+                    # Fetch images for select slides (every 3rd slide, max 4 images)
+                    for idx in range(1, min(len(slides_data), 13), 3):
+                        if idx < len(slides_data):
+                            slide_title = slides_data[idx]["title"]
+                            # Use slide title for more relevant images
+                            img_query = slide_title.split()[:2]
+                            img = get_unsplash_image(" ".join(img_query))
+                            if img:
+                                image_data[idx] = img
                 
-                # Create PowerPoint
+                # Step 5: Creating presentation
+                status_text.text("🎨 Designing presentation...")
+                progress_bar.progress(70)
+                
                 prs = Presentation()
                 prs.slide_width = Inches(10)
                 prs.slide_height = Inches(5.625)
                 
-                # Color schemes based on style
-                color_schemes = {
-                    "Professional": (RGBColor(25, 50, 100), RGBColor(66, 135, 245)),
-                    "Creative": (RGBColor(255, 87, 51), RGBColor(255, 195, 0)),
-                    "Educational": (RGBColor(46, 125, 50), RGBColor(139, 195, 74)),
-                    "Minimal": (RGBColor(33, 33, 33), RGBColor(97, 97, 97)),
-                    "Bold": (RGBColor(211, 47, 47), RGBColor(245, 124, 0)),
-                    "Modern": (RGBColor(102, 126, 234), RGBColor(118, 75, 162))
-                }
-                
-                DARK_COLOR, ACCENT_COLOR = color_schemes.get(style, color_schemes["Professional"])
+                # Get selected color theme
+                DARK_COLOR = COLOR_THEMES[selected_theme]["dark"]
+                ACCENT_COLOR = COLOR_THEMES[selected_theme]["accent"]
                 WHITE = RGBColor(255, 255, 255)
                 GRAY = RGBColor(80, 80, 80)
                 
@@ -362,7 +456,6 @@ Make content informative, engaging, and well-structured."""
                         background.fill.fore_color.rgb = DARK_COLOR
                         background.line.fill.background()
                         
-                        # Main title
                         title_box = slide.shapes.add_textbox(
                             Inches(1), Inches(1.5), Inches(8), Inches(1.8)
                         )
@@ -375,7 +468,6 @@ Make content informative, engaging, and well-structured."""
                         title_para.font.color.rgb = WHITE
                         title_para.alignment = PP_ALIGN.CENTER
                         
-                        # Author name - "by [Name]"
                         subtitle_box = slide.shapes.add_textbox(
                             Inches(1), Inches(3.5), Inches(8), Inches(0.6)
                         )
@@ -402,65 +494,106 @@ Make content informative, engaging, and well-structured."""
                         accent.fill.fore_color.rgb = ACCENT_COLOR
                         accent.line.fill.background()
                         
-                        title_box = slide.shapes.add_textbox(
-                            Inches(0.5), Inches(0.5), Inches(9), Inches(0.8)
-                        )
-                        title_frame = title_box.text_frame
-                        title_frame.text = slide_data["title"]
-                        title_para = title_frame.paragraphs[0]
-                        title_para.font.size = Pt(36)
-                        title_para.font.bold = True
-                        title_para.font.color.rgb = DARK_COLOR
+                        # Check if this slide has an image
+                        has_image = idx in image_data
                         
-                        if slide_data["content"]:
-                            content_box = slide.shapes.add_textbox(
-                                Inches(1.2), Inches(1.8), Inches(7.6), Inches(3.2)
+                        if has_image:
+                            # Layout with image on right
+                            title_box = slide.shapes.add_textbox(
+                                Inches(0.5), Inches(0.5), Inches(5), Inches(0.8)
                             )
-                            text_frame = content_box.text_frame
-                            text_frame.word_wrap = True
+                            title_frame = title_box.text_frame
+                            title_frame.text = slide_data["title"]
+                            title_para = title_frame.paragraphs[0]
+                            title_para.font.size = Pt(32)
+                            title_para.font.bold = True
+                            title_para.font.color.rgb = DARK_COLOR
                             
-                            for point in slide_data["content"]:
-                                p = text_frame.add_paragraph()
-                                p.text = point
-                                p.level = 0
-                                p.font.size = Pt(20)
-                                p.font.color.rgb = GRAY
-                                p.space_before = Pt(14)
-                                p.space_after = Pt(8)
+                            # Add image
+                            try:
+                                img_stream = image_data[idx]
+                                pic = slide.shapes.add_picture(
+                                    img_stream,
+                                    Inches(5.5), Inches(1.2),
+                                    width=Inches(4), height=Inches(3.8)
+                                )
+                            except:
+                                pass
+                            
+                            # Content on left
+                            if slide_data["content"]:
+                                content_box = slide.shapes.add_textbox(
+                                    Inches(0.8), Inches(1.8), Inches(4.4), Inches(3.2)
+                                )
+                                text_frame = content_box.text_frame
+                                text_frame.word_wrap = True
+                                
+                                for point in slide_data["content"]:
+                                    p = text_frame.add_paragraph()
+                                    p.text = point
+                                    p.level = 0
+                                    p.font.size = Pt(16)
+                                    p.font.color.rgb = GRAY
+                                    p.space_before = Pt(10)
+                                    p.space_after = Pt(6)
+                        else:
+                            # Full width layout (no image)
+                            title_box = slide.shapes.add_textbox(
+                                Inches(0.5), Inches(0.5), Inches(9), Inches(0.8)
+                            )
+                            title_frame = title_box.text_frame
+                            title_frame.text = slide_data["title"]
+                            title_para = title_frame.paragraphs[0]
+                            title_para.font.size = Pt(36)
+                            title_para.font.bold = True
+                            title_para.font.color.rgb = DARK_COLOR
+                            
+                            if slide_data["content"]:
+                                content_box = slide.shapes.add_textbox(
+                                    Inches(1.2), Inches(1.8), Inches(7.6), Inches(3.2)
+                                )
+                                text_frame = content_box.text_frame
+                                text_frame.word_wrap = True
+                                
+                                for point in slide_data["content"]:
+                                    p = text_frame.add_paragraph()
+                                    p.text = point
+                                    p.level = 0
+                                    p.font.size = Pt(20)
+                                    p.font.color.rgb = GRAY
+                                    p.space_before = Pt(14)
+                                    p.space_after = Pt(8)
                 
-                # Step 5: Finalizing
+                # Step 6: Finalizing
                 status_text.text("✅ Finalizing presentation...")
                 progress_bar.progress(95)
                 
-                # Save to bytes
                 pptx_bytes = io.BytesIO()
                 prs.save(pptx_bytes)
                 pptx_bytes.seek(0)
                 
                 progress_bar.progress(100)
-                
-                # Clear progress
                 progress_bar.empty()
                 status_text.empty()
                 
-                # Success message
                 st.balloons()
                 st.success(f"🎉 **Success!** Your {len(slides_data)}-slide presentation is ready!")
                 
                 # Stats
-                col1, col2, col3 = st.columns(3)
+                col1, col2, col3, col4 = st.columns(4)
                 with col1:
-                    st.metric("Slides Created", len(slides_data))
+                    st.metric("Slides", len(slides_data))
                 with col2:
                     st.metric("Style", style)
                 with col3:
-                    st.metric("Author", author_name)
+                    st.metric("Theme", selected_theme.split()[0])
+                with col4:
+                    images_added = len(image_data) if add_images else 0
+                    st.metric("Images", images_added)
                 
-                # File name
                 safe_title = slides_data[0]['title'][:40].replace(' ', '_').replace('/', '_').replace('\\', '_')
                 file_name = f"{safe_title}.pptx"
                 
-                # Download button
                 st.download_button(
                     label="📥 Download Presentation",
                     data=pptx_bytes.getvalue(),
@@ -469,7 +602,6 @@ Make content informative, engaging, and well-structured."""
                     use_container_width=True
                 )
                 
-                # Mobile info
                 st.markdown("""
                 <div class="info-card">
                     <strong>📱 Opening on your device:</strong><br>
