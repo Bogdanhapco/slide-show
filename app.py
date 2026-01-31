@@ -6,7 +6,6 @@ from pptx.enum.text import PP_ALIGN
 from pptx.dml.color import RGBColor
 import io
 import requests
-from PIL import Image
 from io import BytesIO
 
 # Page config
@@ -86,13 +85,19 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Get API key from secrets
+# Get API keys from secrets
 try:
-    api_key = st.secrets["GROQ_API_KEY"]
-    client = Groq(api_key=api_key)
+    groq_key = st.secrets["GROQ_API_KEY"]
+    client = Groq(api_key=groq_key)
     api_available = True
 except:
     api_available = False
+
+try:
+    pexels_key = st.secrets["PEXELS_API_KEY"]
+    pexels_available = True
+except:
+    pexels_available = False
 
 # Initialize session state
 if "example_prompts" not in st.session_state:
@@ -144,16 +149,27 @@ COLOR_THEMES = {
     }
 }
 
-def get_unsplash_image(query, orientation="landscape"):
-    """Fetch image from Unsplash API"""
-    try:
-        # Unsplash Source API (no key needed for basic usage)
-        url = f"https://source.unsplash.com/1600x900/?{query}"
-        response = requests.get(url, timeout=10)
-        if response.status_code == 200:
-            return BytesIO(response.content)
+def get_pexels_image(query):
+    """Fetch image from Pexels API"""
+    if not pexels_available:
         return None
-    except:
+    
+    try:
+        headers = {
+            "Authorization": st.secrets["PEXELS_API_KEY"]
+        }
+        url = f"https://api.pexels.com/v1/search?query={query}&per_page=1&orientation=landscape"
+        response = requests.get(url, headers=headers, timeout=10)
+        
+        if response.status_code == 200:
+            data = response.json()
+            if data.get("photos") and len(data["photos"]) > 0:
+                image_url = data["photos"][0]["src"]["large"]
+                img_response = requests.get(image_url, timeout=10)
+                if img_response.status_code == 200:
+                    return BytesIO(img_response.content)
+        return None
+    except Exception as e:
         return None
 
 # Sidebar
@@ -192,10 +208,16 @@ with st.sidebar:
     
     st.markdown("---")
     
+    # Status indicators
     if not api_available:
-        st.error("⚠️ API not configured")
+        st.error("⚠️ Groq API not configured")
     else:
-        st.success("✅ System Ready")
+        st.success("✅ AI System Ready")
+    
+    if not pexels_available:
+        st.warning("⚠️ Images disabled (no Pexels key)")
+    else:
+        st.success("✅ Image System Ready")
     
     st.markdown("---")
     st.caption("© 2025 Genis 2.0")
@@ -204,7 +226,7 @@ with st.sidebar:
 st.markdown('<div class="big-title">🎯 Genis 2.0</div>', unsafe_allow_html=True)
 st.markdown('<div class="subtitle">Professional Slideshow Generator</div>', unsafe_allow_html=True)
 
-# Generate example prompts if not already generated
+# Generate example prompts
 if not st.session_state.example_prompts and api_available:
     with st.spinner("🎲 Generating example ideas..."):
         try:
@@ -301,7 +323,7 @@ with st.expander("⚙️ Customization Options", expanded=True):
         )
     
     with col2:
-        # Color theme selector with preview
+        # Color theme selector
         st.markdown("**Color Theme**")
         selected_theme = st.selectbox(
             "Choose your color scheme",
@@ -319,11 +341,15 @@ with st.expander("⚙️ Customization Options", expanded=True):
         """, unsafe_allow_html=True)
         
         # Image option
-        add_images = st.checkbox(
-            "🖼️ Add AI-powered images to slides",
-            value=True,
-            help="Automatically adds relevant images from Unsplash"
-        )
+        if pexels_available:
+            add_images = st.checkbox(
+                "🖼️ Add professional images to slides",
+                value=True,
+                help="Automatically adds relevant images from Pexels"
+            )
+        else:
+            st.info("📸 Images disabled - add PEXELS_API_KEY to enable")
+            add_images = False
 
 # Generate button
 if st.button("🚀 Generate Slideshow"):
@@ -342,7 +368,7 @@ if st.button("🚀 Generate Slideshow"):
         try:
             # Step 1: Preparing
             status_text.text("🔄 Initializing Genis 2.0...")
-            progress_bar.progress(15)
+            progress_bar.progress(10)
             
             # Create enhanced prompt
             enhanced_prompt = f"""Create slideshow content about: "{topic}"
@@ -370,7 +396,7 @@ Make content informative, engaging, and well-structured."""
 
             # Step 2: Generating content
             status_text.text("🧠 Generating content...")
-            progress_bar.progress(25)
+            progress_bar.progress(20)
             
             chat_completion = client.chat.completions.create(
                 messages=[{"role": "user", "content": enhanced_prompt}],
@@ -383,7 +409,7 @@ Make content informative, engaging, and well-structured."""
             
             # Step 3: Parsing content
             status_text.text("📊 Structuring slides...")
-            progress_bar.progress(40)
+            progress_bar.progress(35)
             
             lines = response_text.split('\n')
             slides_data = []
@@ -409,25 +435,29 @@ Make content informative, engaging, and well-structured."""
                 progress_bar.empty()
                 status_text.empty()
             else:
-                # Step 4: Fetching images (if enabled)
+                # Step 4: Fetching images
                 image_data = {}
-                if add_images:
+                images_fetched = 0
+                
+                if add_images and pexels_available:
                     status_text.text("🖼️ Finding perfect images...")
-                    progress_bar.progress(55)
+                    progress_bar.progress(50)
                     
-                    # Extract main topic for image search
-                    topic_keywords = topic.split()[:3]
-                    search_query = " ".join(topic_keywords)
+                    # Get main keywords from topic
+                    topic_words = topic.lower().replace("create", "").replace("presentation", "").replace("about", "").replace("slide", "").strip()
                     
                     # Fetch images for select slides (every 3rd slide, max 4 images)
-                    for idx in range(1, min(len(slides_data), 13), 3):
+                    for idx in range(2, min(len(slides_data), 14), 3):
                         if idx < len(slides_data):
-                            slide_title = slides_data[idx]["title"]
-                            # Use slide title for more relevant images
-                            img_query = slide_title.split()[:2]
-                            img = get_unsplash_image(" ".join(img_query))
+                            # Use slide title for search
+                            search_query = slides_data[idx]["title"].split()[:3]
+                            search_term = " ".join(search_query)
+                            
+                            img = get_pexels_image(search_term)
                             if img:
                                 image_data[idx] = img
+                                images_fetched += 1
+                                status_text.text(f"🖼️ Found {images_fetched} images...")
                 
                 # Step 5: Creating presentation
                 status_text.text("🎨 Designing presentation...")
@@ -437,7 +467,7 @@ Make content informative, engaging, and well-structured."""
                 prs.slide_width = Inches(10)
                 prs.slide_height = Inches(5.625)
                 
-                # Get selected color theme
+                # Get selected colors
                 DARK_COLOR = COLOR_THEMES[selected_theme]["dark"]
                 ACCENT_COLOR = COLOR_THEMES[selected_theme]["accent"]
                 WHITE = RGBColor(255, 255, 255)
@@ -494,18 +524,18 @@ Make content informative, engaging, and well-structured."""
                         accent.fill.fore_color.rgb = ACCENT_COLOR
                         accent.line.fill.background()
                         
-                        # Check if this slide has an image
+                        # Check if slide has image
                         has_image = idx in image_data
                         
                         if has_image:
-                            # Layout with image on right
+                            # Split layout
                             title_box = slide.shapes.add_textbox(
                                 Inches(0.5), Inches(0.5), Inches(5), Inches(0.8)
                             )
                             title_frame = title_box.text_frame
                             title_frame.text = slide_data["title"]
                             title_para = title_frame.paragraphs[0]
-                            title_para.font.size = Pt(32)
+                            title_para.font.size = Pt(30)
                             title_para.font.bold = True
                             title_para.font.color.rgb = DARK_COLOR
                             
@@ -517,13 +547,13 @@ Make content informative, engaging, and well-structured."""
                                     Inches(5.5), Inches(1.2),
                                     width=Inches(4), height=Inches(3.8)
                                 )
-                            except:
+                            except Exception as e:
                                 pass
                             
-                            # Content on left
+                            # Content
                             if slide_data["content"]:
                                 content_box = slide.shapes.add_textbox(
-                                    Inches(0.8), Inches(1.8), Inches(4.4), Inches(3.2)
+                                    Inches(0.8), Inches(1.7), Inches(4.4), Inches(3.3)
                                 )
                                 text_frame = content_box.text_frame
                                 text_frame.word_wrap = True
@@ -537,7 +567,7 @@ Make content informative, engaging, and well-structured."""
                                     p.space_before = Pt(10)
                                     p.space_after = Pt(6)
                         else:
-                            # Full width layout (no image)
+                            # Full width
                             title_box = slide.shapes.add_textbox(
                                 Inches(0.5), Inches(0.5), Inches(9), Inches(0.8)
                             )
@@ -588,8 +618,7 @@ Make content informative, engaging, and well-structured."""
                 with col3:
                     st.metric("Theme", selected_theme.split()[0])
                 with col4:
-                    images_added = len(image_data) if add_images else 0
-                    st.metric("Images", images_added)
+                    st.metric("Images", images_fetched)
                 
                 safe_title = slides_data[0]['title'][:40].replace(' ', '_').replace('/', '_').replace('\\', '_')
                 file_name = f"{safe_title}.pptx"
