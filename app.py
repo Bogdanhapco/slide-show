@@ -66,21 +66,6 @@ st.markdown("""
         box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
     }
     
-    .example-prompt {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
-        padding: 1rem;
-        border-radius: 8px;
-        margin: 0.5rem 0;
-        cursor: pointer;
-        transition: all 0.3s ease;
-    }
-    
-    .example-prompt:hover {
-        transform: translateX(5px);
-        box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
-    }
-    
     .info-card {
         background-color: #f8f9fa;
         padding: 1.5rem;
@@ -99,9 +84,11 @@ try:
 except:
     api_available = False
 
-# Initialize session state for examples
+# Initialize session state
 if "example_prompts" not in st.session_state:
     st.session_state.example_prompts = []
+if "selected_example" not in st.session_state:
+    st.session_state.selected_example = ""
 
 # Sidebar
 with st.sidebar:
@@ -173,7 +160,6 @@ if not st.session_state.example_prompts and api_available:
             examples = response.choices[0].message.content.strip().split('\n')
             st.session_state.example_prompts = [ex.strip() for ex in examples if ex.strip()]
         except:
-            # Fallback examples if API fails
             st.session_state.example_prompts = [
                 "Create a 10-slide presentation about renewable energy sources",
                 "Create a 15-slide presentation about the human brain and memory",
@@ -189,7 +175,7 @@ if st.session_state.example_prompts:
     for idx, example in enumerate(st.session_state.example_prompts[:4]):
         with cols[idx % 2]:
             if st.button(f"📄 {example}", key=f"example_{idx}", use_container_width=True):
-                st.session_state.user_topic = example
+                st.session_state.selected_example = example
 
 # Refresh examples button
 col1, col2, col3 = st.columns([1, 1, 1])
@@ -200,28 +186,34 @@ with col2:
 
 st.markdown("---")
 
-# Input field
+# Input fields
+st.markdown("### 👤 Your Information")
+
+author_name = st.text_input(
+    "Your Name (will appear on title slide)",
+    placeholder="e.g., John Smith",
+    help="This will be shown as the author on the first slide"
+)
+
 st.markdown("### 📝 What would you like to create?")
 
-# Check if example was clicked
-default_value = st.session_state.get("user_topic", "")
-if default_value:
+# Topic input - use selected example if available
+if st.session_state.selected_example:
     topic = st.text_area(
         "Describe your slideshow:",
-        value=default_value,
+        value=st.session_state.selected_example,
         placeholder="Example: Create a 10-slide presentation about climate change",
         height=100,
-        label_visibility="collapsed"
+        label_visibility="collapsed",
+        key="topic_input"
     )
-    # Clear the session state after using it
-    if "user_topic" in st.session_state:
-        del st.session_state.user_topic
 else:
     topic = st.text_area(
         "Describe your slideshow:",
         placeholder="Example: Create a 10-slide presentation about climate change",
         height=100,
-        label_visibility="collapsed"
+        label_visibility="collapsed",
+        key="topic_input"
     )
 
 # Advanced options
@@ -243,10 +235,15 @@ with st.expander("⚙️ Advanced Options"):
 
 # Generate button
 if st.button("🚀 Generate Slideshow"):
+    # Clear the selected example after generation attempt
+    st.session_state.selected_example = ""
+    
     if not api_available:
         st.error("❌ System not configured. Please contact administrator.")
     elif not topic or len(topic.strip()) < 10:
         st.warning("⚠️ Please enter a more detailed topic for your slideshow.")
+    elif not author_name or len(author_name.strip()) < 2:
+        st.warning("⚠️ Please enter your name to continue.")
     else:
         # Progress indicator
         progress_bar = st.progress(0)
@@ -365,8 +362,9 @@ Make content informative, engaging, and well-structured."""
                         background.fill.fore_color.rgb = DARK_COLOR
                         background.line.fill.background()
                         
+                        # Main title
                         title_box = slide.shapes.add_textbox(
-                            Inches(1), Inches(1.8), Inches(8), Inches(1.8)
+                            Inches(1), Inches(1.5), Inches(8), Inches(1.8)
                         )
                         title_frame = title_box.text_frame
                         title_frame.text = slide_data["title"]
@@ -377,13 +375,14 @@ Make content informative, engaging, and well-structured."""
                         title_para.font.color.rgb = WHITE
                         title_para.alignment = PP_ALIGN.CENTER
                         
+                        # Author name - "by [Name]"
                         subtitle_box = slide.shapes.add_textbox(
-                            Inches(1), Inches(3.8), Inches(8), Inches(0.5)
+                            Inches(1), Inches(3.5), Inches(8), Inches(0.6)
                         )
                         subtitle_frame = subtitle_box.text_frame
-                        subtitle_frame.text = "Created with Genis 2.0"
+                        subtitle_frame.text = f"by {author_name.strip()}"
                         subtitle_para = subtitle_frame.paragraphs[0]
-                        subtitle_para.font.size = Pt(18)
+                        subtitle_para.font.size = Pt(24)
                         subtitle_para.font.color.rgb = ACCENT_COLOR
                         subtitle_para.alignment = PP_ALIGN.CENTER
                         
@@ -455,7 +454,7 @@ Make content informative, engaging, and well-structured."""
                 with col2:
                     st.metric("Style", style)
                 with col3:
-                    st.metric("Status", "✅ Ready")
+                    st.metric("Author", author_name)
                 
                 # File name
                 safe_title = slides_data[0]['title'][:40].replace(' ', '_').replace('/', '_').replace('\\', '_')
