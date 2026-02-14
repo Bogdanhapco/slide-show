@@ -400,7 +400,7 @@ Make content informative, engaging, and well-structured."""
             
             chat_completion = client.chat.completions.create(
                 messages=[{"role": "user", "content": enhanced_prompt}],
-                model="llama-3.3-70b-versatile",
+                model="openai/gpt-oss-120b",
                 temperature=0.7,
                 max_tokens=8000,
             )
@@ -657,3 +657,4 @@ st.markdown("""
     <p style="font-size: 0.9rem; margin-top: 1rem;">© 2025 Genis 2.0. All presentations created are owned by you.</p>
 </div>
 """, unsafe_allow_html=True)
+
