@@ -1,487 +1,364 @@
 import streamlit as st
-from groq import Groq
-import io
-import json
+import google.generativeai as genai
 import re
+import json
 
-# Page config
+# ── Page config ────────────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="Genis 2.0 - Slideshow Generator",
+    page_title="Genis 2.0 – Slideshow Generator",
     page_icon="🎯",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap');
 
-    [data-testid="stSidebar"] {
-        min-width: 300px !important;
-        max-width: 300px !important;
-    }
-
-    .block-container {
-        max-width: 900px !important;
-        padding-left: 2rem;
-        padding-right: 2rem;
-    }
+    [data-testid="stSidebar"] { min-width:300px !important; max-width:300px !important; }
+    .block-container { max-width:860px !important; padding: 2rem; }
 
     .big-title {
-        text-align: center;
-        font-size: 3.2rem;
-        font-weight: 800;
-        margin-bottom: 0.3rem;
-        background: linear-gradient(135deg, #00f5d4 0%, #7b2ff7 100%);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        font-family: 'Syne', sans-serif;
-        letter-spacing: -1px;
+        text-align:center; font-size:3.2rem; font-weight:800;
+        background: linear-gradient(135deg,#00f5d4 0%,#7b2ff7 100%);
+        -webkit-background-clip:text; -webkit-text-fill-color:transparent;
+        font-family:'Syne',sans-serif; letter-spacing:-1px; margin-bottom:0.2rem;
     }
-
     .subtitle {
-        text-align: center;
-        font-size: 1.1rem;
-        color: #888;
-        margin-bottom: 2rem;
-        font-family: 'Space Mono', monospace;
-        letter-spacing: 2px;
-        text-transform: uppercase;
+        text-align:center; font-size:1rem; color:#888; margin-bottom:2rem;
+        font-family:'Space Mono',monospace; letter-spacing:2px; text-transform:uppercase;
     }
-
     .stButton > button {
-        width: 100%;
-        height: 3.5rem;
-        font-size: 1.1rem;
-        font-weight: bold;
-        background: linear-gradient(135deg, #00f5d4 0%, #7b2ff7 100%);
-        color: #0a0a0a;
-        border: none;
-        border-radius: 8px;
-        margin-top: 1rem;
-        font-family: 'Space Mono', monospace;
-        letter-spacing: 1px;
+        width:100%; height:3.5rem; font-size:1.1rem; font-weight:bold;
+        background:linear-gradient(135deg,#00f5d4 0%,#7b2ff7 100%);
+        color:#0a0a0a; border:none; border-radius:8px; margin-top:1rem;
+        font-family:'Space Mono',monospace; letter-spacing:1px;
     }
-
-    .stButton > button:hover {
-        opacity: 0.9;
-        transform: translateY(-2px);
-        box-shadow: 0 6px 20px rgba(0,245,212,0.3);
-    }
-
-    .style-card {
-        background: #111;
-        border: 1px solid #222;
-        border-radius: 10px;
-        padding: 1rem;
-        margin-bottom: 0.5rem;
-        cursor: pointer;
-        transition: border-color 0.2s;
-    }
-
-    .style-card:hover {
-        border-color: #00f5d4;
-    }
-
+    .stButton > button:hover { opacity:.88; transform:translateY(-2px); box-shadow:0 6px 20px rgba(0,245,212,.3); }
     .info-card {
-        background: #0d1117;
-        padding: 1.2rem;
-        border-radius: 10px;
-        border-left: 3px solid #00f5d4;
-        margin: 1rem 0;
-        font-family: 'Space Mono', monospace;
-        font-size: 0.85rem;
+        background:#0d1117; padding:1.2rem; border-radius:10px;
+        border-left:3px solid #00f5d4; margin:1rem 0;
+        font-family:'Space Mono',monospace; font-size:.84rem; color:#ccc;
     }
 </style>
 """, unsafe_allow_html=True)
 
-# API setup
+# ── API setup ──────────────────────────────────────────────────────────────────
 try:
-    groq_key = st.secrets["GROQ_API_KEY"]
-    client = Groq(api_key=groq_key)
+    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+    model = genai.GenerativeModel("gemini-2.0-flash")
     api_available = True
-except:
+except Exception:
     api_available = False
 
-# Style presets
-STYLE_PRESETS = {
-    "🌑 Dark / Neon (Cyberpunk)": {
-        "description": "Dark background, glowing neon accents, futuristic typography",
-        "prompt": """Dark cyberpunk aesthetic. Background: #0a0a0f. Neon accent colors: #00f5d4 (cyan) and #ff2d78 (pink). 
-        Font: use Google Fonts 'Orbitron' for titles, 'Share Tech Mono' for body. 
-        Slide title: glowing text-shadow in cyan. Bullets: neon green dots (#39ff14). 
-        Slide number in corner with neon glow. Add subtle scanline CSS overlay (repeating-linear-gradient). 
-        Navigation buttons: dark with neon border. Progress bar: neon gradient."""
-    },
-    "🤍 Clean / Minimal (White)": {
-        "description": "Pure white, razor-sharp typography, extreme negative space",
-        "prompt": """Ultra-minimal editorial aesthetic. Background: #fafafa. Text: #0d0d0d. 
-        Font: use Google Fonts 'Playfair Display' for titles, 'DM Sans' for body. 
-        Accent: single color #1a1a2e. Generous padding and whitespace. 
-        Slide number: subtle small text top-right. Thin 1px lines as dividers. 
-        Navigation: minimal text arrows. No shadows, no gradients — pure type and space."""
-    },
-    "💼 Bold / Corporate": {
-        "description": "Strong structure, confident colors, authoritative presence",
-        "prompt": """Bold corporate powerhouse aesthetic. Background: #0f1923. Accent: #f7c948 (gold). 
-        Font: use Google Fonts 'Barlow Condensed' (800 weight) for titles, 'IBM Plex Sans' for body. 
-        Titles: massive, all-caps, tracked. Left accent bar: 4px solid gold on slide titles. 
-        Bullets: gold square markers. Navigation: rectangular flat buttons in gold. 
-        Slide counter: gold / total in corner. Dark professional feel with high contrast."""
-    },
-    "🌈 Gradient / Modern": {
-        "description": "Lush mesh gradients, glass morphism, smooth and contemporary",
-        "prompt": """Modern glassmorphism + gradient mesh aesthetic. Background: deep gradient #0f0c29 → #302b63 → #24243e. 
-        Frosted glass slide cards: background rgba(255,255,255,0.05), backdrop-filter blur(20px), border 1px solid rgba(255,255,255,0.1). 
-        Font: use Google Fonts 'Plus Jakarta Sans' for titles, 'Nunito' for body. 
-        Accent: vivid gradient text on titles (#f953c6 → #b91d73). 
-        Navigation: glass pill buttons with hover glow. Smooth slide transitions with scale + fade."""
-    },
-    "✏️ Custom": {
-        "description": "Describe your own style",
-        "prompt": None
-    }
-}
-
-# Animation descriptions for the AI
-ANIMATION_STYLES = {
-    "🌑 Dark / Neon (Cyberpunk)": "glitch-flicker entrance for title, scan-line wipe for bullets",
-    "🤍 Clean / Minimal (White)": "elegant fade-up for title, staggered fade-in for bullets",
-    "💼 Bold / Corporate": "slide-in-left for title, cascade drop for bullets",
-    "🌈 Gradient / Modern": "scale-up with blur-clear for title, float-up stagger for bullets",
-    "✏️ Custom": "smooth fade and slide-up transitions"
-}
-
-# ─── Sidebar ───────────────────────────────────────────────────────────────────
+# ── Sidebar ────────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown("## 🎯 Genis 2.0")
     st.markdown("---")
     st.markdown("### ⚡ Features")
     st.markdown("""
-- 🎨 4 style presets + custom
-- 💡 AI-generated HTML slides
-- 🎬 Slide animations toggle
-- ⌨️ Keyboard + click navigation
-- 🔄 Auto-advance mode
+- 🤖 Gemini Flash 2.0 generation
+- 🎨 Fully unique AI-designed themes
+- 🎬 Per-slide animations
+- ✨ FX on/off toggle in slideshow
+- ⌨️ Keyboard + click + swipe nav
+- ⏩ Auto-advance mode
 - 📥 Download as .html
+- 🖨️ Print → PDF export
     """)
     st.markdown("---")
-    st.markdown("### 📱 Opening the file")
-    st.info("Double-click the downloaded `.html` file — opens in any browser on any device.")
+    st.markdown("### 🔑 Setup")
     st.markdown("""
-**Print to PDF:**  
-Browser → Print → Save as PDF  
-(preserves full styling)
+Add to Streamlit secrets:
+```
+GEMINI_API_KEY = "your-key-here"
+```
+Get key free at [aistudio.google.com](https://aistudio.google.com)
     """)
     st.markdown("---")
-    st.markdown("### 🔢 Limits")
-    st.info("**Max slides:** 60  \n**Min slides:** 3")
+    st.markdown("### 📂 Opening the file")
+    st.info("Double-click the `.html` file → opens in any browser.\n\nPrint → Save as PDF to share.")
     st.markdown("---")
     if not api_available:
-        st.error("⚠️ Groq API not configured")
+        st.error("⚠️ GEMINI_API_KEY not configured")
     else:
-        st.success("✅ AI System Ready")
+        st.success("✅ Gemini Flash Ready")
     st.markdown("---")
     st.caption("© 2025 Genis 2.0")
 
-# ─── Main ──────────────────────────────────────────────────────────────────────
+# ── Main UI ────────────────────────────────────────────────────────────────────
 st.markdown('<div class="big-title">🎯 Genis 2.0</div>', unsafe_allow_html=True)
-st.markdown('<div class="subtitle">HTML Slideshow Generator</div>', unsafe_allow_html=True)
-
+st.markdown('<div class="subtitle">AI HTML Slideshow Generator</div>', unsafe_allow_html=True)
 st.markdown("---")
 
-# Author name
-st.markdown("### 👤 Your Information")
-author_name = st.text_input(
-    "Your Name (appears on title slide)",
-    placeholder="e.g., John Smith"
-)
+st.markdown("### 👤 Author")
+author_name = st.text_input("Your name (shown on title slide)", placeholder="e.g. John Smith")
 
-# Topic
-st.markdown("### 📝 What would you like to create?")
+st.markdown("### 📝 Topic")
 topic = st.text_area(
     "Describe your slideshow:",
-    placeholder="Example: Create a 10-slide presentation about the future of AI in healthcare",
-    height=100,
+    placeholder="e.g. The future of renewable energy and why it will reshape the global economy by 2040",
+    height=110,
     label_visibility="collapsed"
 )
 
-# Options
-with st.expander("⚙️ Customization Options", expanded=True):
+with st.expander("⚙️ Options", expanded=True):
     col1, col2 = st.columns(2)
-
     with col1:
-        num_slides = st.number_input(
-            "Number of slides",
-            min_value=3,
-            max_value=60,
-            value=10
-        )
-        pres_style = st.selectbox(
-            "Presentation style",
-            ["Professional", "Creative", "Educational", "Storytelling", "Technical"]
-        )
-
+        num_slides = st.number_input("Number of slides", min_value=3, max_value=40, value=10)
+        pres_style = st.selectbox("Content tone", ["Professional", "Creative", "Educational", "Storytelling", "Technical", "Inspirational"])
     with col2:
-        selected_theme = st.selectbox(
-            "Visual theme",
-            list(STYLE_PRESETS.keys())
-        )
-        enable_animations = st.toggle("🎬 Enable slide animations", value=True)
-        auto_advance = st.toggle("⏩ Auto-advance slides", value=False)
+        enable_animations = st.toggle("🎬 Animations", value=True)
+        auto_advance = st.toggle("⏩ Auto-advance", value=False)
         if auto_advance:
-            advance_seconds = st.slider("Seconds per slide", 2, 15, 5)
+            advance_secs = st.slider("Seconds per slide", 2, 20, 6)
         else:
-            advance_seconds = 0
+            advance_secs = 0
 
-    # Custom style input
-    if selected_theme == "✏️ Custom":
-        st.markdown("**Describe your custom style:**")
-        custom_style_desc = st.text_area(
-            "Style description",
-            placeholder="e.g., Retro 80s vibe, warm sunset colors (#ff6b35, #f7c59f), serif fonts, vintage grain texture overlay, bold italic titles...",
-            height=100,
-            label_visibility="collapsed"
-        )
-    else:
-        custom_style_desc = ""
-        theme_info = STYLE_PRESETS[selected_theme]
-        st.markdown(f"**Preview:** *{theme_info['description']}*")
+    st.markdown("**🎨 Mood hint** *(optional — leave blank for full AI surprise)*")
+    mood_hint = st.text_input(
+        "mood",
+        placeholder="e.g. dark and dramatic  /  warm and earthy  /  electric neon  /  clean and corporate",
+        label_visibility="collapsed"
+    )
 
-# ─── Generate ──────────────────────────────────────────────────────────────────
-if st.button("🚀 Generate HTML Slideshow"):
+# ── Generate ───────────────────────────────────────────────────────────────────
+if st.button("🚀 Generate Slideshow"):
     if not api_available:
-        st.error("❌ Groq API not configured.")
+        st.error("❌ GEMINI_API_KEY not set in Streamlit secrets.")
     elif not topic or len(topic.strip()) < 10:
         st.warning("⚠️ Please enter a more detailed topic.")
     elif not author_name or len(author_name.strip()) < 2:
         st.warning("⚠️ Please enter your name.")
-    elif selected_theme == "✏️ Custom" and len(custom_style_desc.strip()) < 15:
-        st.warning("⚠️ Please describe your custom style in more detail.")
     else:
         progress_bar = st.progress(0)
-        status_text = st.empty()
+        status = st.empty()
 
         try:
-            # Step 1: Build style prompt
-            if selected_theme == "✏️ Custom":
-                style_prompt = custom_style_desc.strip()
-                anim_style = "smooth fade and slide-up transitions"
-            else:
-                style_prompt = STYLE_PRESETS[selected_theme]["prompt"]
-                anim_style = ANIMATION_STYLES[selected_theme]
+            # ── Step 1: generate slide content ──────────────────────────────
+            status.text("🧠 Writing slide content...")
+            progress_bar.progress(10)
 
-            animation_instructions = ""
-            if enable_animations:
-                animation_instructions = f"""
-ANIMATIONS: Include CSS keyframe animations on each slide.
-- Title animates in on slide enter: {anim_style}
-- Bullet points stagger in one by one (animation-delay: 0.1s increments)
-- Add a class 'slide-active' that triggers animations — JS adds this class when slide becomes visible
-- Use will-change: transform for performance
-"""
-            else:
-                animation_instructions = "ANIMATIONS: No animations. All elements appear instantly."
+            content_prompt = f"""You are a world-class presentation writer.
 
-            auto_advance_js = ""
-            if auto_advance and advance_seconds > 0:
-                auto_advance_js = f"setInterval(() => {{ if(currentSlide < totalSlides - 1) goToSlide(currentSlide + 1); }}, {advance_seconds * 1000});"
+Topic: {topic}
+Tone: {pres_style}
+Slides: {num_slides}
+Author: {author_name.strip()}
 
-            # Step 2: Generate slide content
-            status_text.text("🧠 Generating slide content...")
-            progress_bar.progress(15)
+Write {num_slides} slides. Return ONLY a valid JSON array, no markdown, no explanation.
 
-            content_prompt = f"""Create slideshow content for: "{topic}"
+Each slide object:
+{{
+  "index": 0,
+  "type": "title" | "statement" | "split" | "grid" | "quote" | "timeline" | "stats" | "closing",
+  "title": "...",
+  "subtitle": "...",
+  "body": "...",
+  "bullets": ["...", "..."],
+  "stats": [{{"value":"82%","label":"of companies use AI"}}],
+  "quote": "...",
+  "quote_author": "...",
+  "grid_items": [{{"icon":"emoji","text":"short label"}}],
+  "timeline_items": [{{"year":"2020","event":"..."}}],
+  "accent_word": "..."
+}}
 
-Requirements:
-- Number of slides: {num_slides}
-- Style: {pres_style}
-- First slide: title slide only (no bullets)
-- Last slide: strong conclusion/summary
-- Each content slide: 3-5 concise bullet points (not full sentences, punchy)
+Rules:
+- Slide 0 must be type "title", last slide type "closing"
+- Use a MIX of types — never repeat same type twice in a row
+- body and bullets should NOT both be filled — pick one
+- Keep text SHORT and PUNCHY
+- stats slides: 2-4 big numbers with labels
+- grid slides: exactly 4-6 items with relevant emojis
+- quote slides: real or paraphrased relevant quote
+- timeline slides: 4-5 chronological events
+- For non-applicable fields use empty string "" or empty array []"""
 
-Respond in this EXACT format, nothing else:
+            content_resp = model.generate_content(content_prompt)
+            raw = content_resp.text.strip()
+            raw = re.sub(r'^```[a-z]*\n?', '', raw)
+            raw = re.sub(r'\n?```$', '', raw.strip())
 
-SLIDE 1:
-TITLE: [Main presentation title]
-SUBTITLE: [optional short tagline or leave blank]
+            try:
+                slides_data = json.loads(raw)
+            except json.JSONDecodeError:
+                match = re.search(r'\[.*\]', raw, re.DOTALL)
+                if match:
+                    slides_data = json.loads(match.group())
+                else:
+                    st.error("❌ Failed to parse slide content. Please try again.")
+                    progress_bar.empty(); status.empty(); st.stop()
 
-SLIDE 2:
-TITLE: [slide title]
-BULLETS:
-- [point 1]
-- [point 2]
-- [point 3]
-
-Continue this pattern for all {num_slides} slides. No extra commentary."""
-
-            content_resp = client.chat.completions.create(
-                messages=[{"role": "user", "content": content_prompt}],
-                model="llama-3.3-70b-versatile",
-                temperature=0.7,
-                max_tokens=6000,
-            )
-            raw_content = content_resp.choices[0].message.content
-
-            # Step 3: Parse slides
-            status_text.text("📊 Structuring slides...")
             progress_bar.progress(35)
 
-            slides_data = []
-            current_slide = None
-            in_bullets = False
+            # ── Step 2: generate full HTML ───────────────────────────────────
+            status.text("🎨 Designing your slideshow — this takes ~20 seconds...")
+            progress_bar.progress(45)
 
-            for line in raw_content.split('\n'):
-                line = line.strip()
-                if re.match(r'^SLIDE \d+:', line):
-                    if current_slide:
-                        slides_data.append(current_slide)
-                    current_slide = {"title": "", "subtitle": "", "bullets": []}
-                    in_bullets = False
-                elif line.startswith('TITLE:') and current_slide is not None:
-                    current_slide["title"] = line.replace('TITLE:', '').strip()
-                elif line.startswith('SUBTITLE:') and current_slide is not None:
-                    current_slide["subtitle"] = line.replace('SUBTITLE:', '').strip()
-                elif line == 'BULLETS:':
-                    in_bullets = True
-                elif (line.startswith('- ') or line.startswith('• ')) and in_bullets and current_slide is not None:
-                    current_slide["bullets"].append(line[2:].strip())
+            mood_line = f'Mood/vibe from user: "{mood_hint.strip()}"' if mood_hint.strip() else "No mood hint — go wild. Design something bold, unique, and memorable."
 
-            if current_slide:
-                slides_data.append(current_slide)
+            anim_block = """
+━━━ ANIMATIONS ━━━
+Use CSS keyframe animations triggered by JS adding class 'active' to the current slide.
+- Title slide: massive scale+blur entrance for the h1 (scale 1.2→1, blur 8px→0, opacity 0→1)
+- Statement slide: text slams in with slight rotation (-2deg→0) + fade
+- Split slide: left panel slides from left, right panel slides from right simultaneously  
+- Grid slide: cards fan in with staggered scale+fade (0.08s delay increments)
+- Quote slide: quote mark scales in first, then text fades up
+- Stats slide: numbers animate counting up from 0 using JS requestAnimationFrame
+- Timeline slide: dots and lines draw in sequentially
+- Closing slide: same energy as title
+- Body text / bullets: each line fades up with 0.1s stagger delay
+- A fixed button id="fx-btn" (bottom-right corner, small, elegant) toggles class 'no-anim' on <body>
+  CSS: body.no-anim * { animation-duration: 0.001s !important; transition-duration: 0.001s !important; }
+  Button shows "✨" when animations on, "○" when off
+""" if enable_animations else """
+━━━ ANIMATIONS ━━━
+No entrance animations. Everything appears instantly.
+Include the #fx-btn toggle button anyway (bottom-right), default state OFF showing "○".
+User can click to enable animations if they want.
+"""
 
-            if not slides_data:
-                st.error("❌ Failed to parse slide content. Please try again.")
-                progress_bar.empty()
-                status_text.empty()
-                st.stop()
+            auto_block = f"""
+━━━ AUTO-ADVANCE ━━━
+After navigation is set up, add:
+setInterval(() => {{ if (currentIndex < totalSlides - 1) goTo(currentIndex + 1); }}, {advance_secs * 1000});
+""" if auto_advance and advance_secs > 0 else ""
 
-            # Step 4: Generate HTML
-            status_text.text("🎨 Designing your HTML slideshow...")
-            progress_bar.progress(55)
+            html_prompt = f"""You are an elite front-end designer and creative director. Generate a STUNNING, production-quality, self-contained HTML5 slideshow.
 
-            slides_json = json.dumps(slides_data, ensure_ascii=False)
+{mood_line}
 
-            html_prompt = f"""Generate a complete, self-contained HTML5 slideshow presentation file.
-
-SLIDE DATA (JSON):
-{slides_json}
+SLIDE DATA:
+{json.dumps(slides_data, ensure_ascii=False, indent=2)}
 
 AUTHOR: {author_name.strip()}
 TOTAL SLIDES: {len(slides_data)}
 
-VISUAL STYLE:
-{style_prompt}
+━━━ VISUAL DESIGN MANDATE ━━━
+Design a UNIQUE, cohesive visual identity from scratch. Choose:
+1. A color palette (2-3 main colors + neutrals). Be bold — not default blue/purple.
+2. Two Google Fonts: one dramatic display font for titles, one refined font for body text.
+3. A signature graphic motif woven through the design — pick ONE:
+   - Diagonal geometric cuts / slanted panels
+   - Floating abstract SVG blobs / organic shapes
+   - Fine grid or dot-grid background texture
+   - Noise/grain overlay (CSS filter or SVG feTurbulence)
+   - Layered gradient mesh
+   - Bold typographic oversized background letters
+   - Duotone color treatment
+   - Art deco geometric ornaments
+   - etc. — be creative, pick what fits the mood
 
-{animation_instructions}
+The design must feel like a real design agency made it. NOT generic PowerPoint.
 
-AUTO-ADVANCE JS (insert after navigation setup if not empty): {auto_advance_js if auto_advance_js else "// no auto-advance"}
+━━━ SLIDE LAYOUT RULES ━━━
+Each slide type gets a DISTINCT layout — never the same structure twice:
 
-NAVIGATION REQUIREMENTS:
-1. Left/right on-screen arrow buttons (elegant, styled to theme)
-2. Keyboard: ArrowLeft, ArrowRight, Space (next), Home (first), End (last)
-3. Slide counter: "3 / 10" format, styled to theme
-4. Progress bar at top or bottom
-5. Click/tap anywhere on slide = next slide
+"title"     → Full-bleed hero. Massive centered title (7-10vw font). Subtitle below. "by {author_name.strip()}" as small elegant byline. Use the signature motif prominently.
+"statement" → One giant sentence takes up 60-80% of the slide. Minimal everything else. Dramatic.
+"split"     → Exactly 50/50. Left: title + content. Right: pure design — a color block, big SVG shape, giant accent number, oversized accent word, abstract art — NO text except maybe one word.
+"grid"      → Render grid_items as styled cards in CSS grid (2×2 or 2×3). Each card: big emoji + label. Cards styled to match theme.
+"quote"     → Giant decorative quotation marks (styled with font or SVG). Quote text large and italic. Author attribution small below with a line/rule.
+"timeline"  → Visual timeline element (horizontal or vertical). Each event: year in accent color, event text beside it. Connected by line with dots.
+"stats"     → 2-4 stats in a dramatic layout. Numbers HUGE (10-15vw). Labels small below. Arranged asymmetrically or in a grid. Numbers count up on enter.
+"closing"   → Mirrors title energy. Strong closing message. Can include a CTA or summary line.
 
-ANIMATION TOGGLE:
-- Add a small toggle button in corner labeled "✨ FX" 
-- When clicked, adds/removes class 'animations-off' on <body>
-- When 'animations-off': all transitions instant (transition: none !important on everything)
-- Default state: animations {"ON" if enable_animations else "OFF"} (set class accordingly on load)
+STRICT RULES:
+- NEVER use <ul><li> bullet lists — instead use styled <div> rows, cards, or big text
+- If bullets array has items, render them as styled rows (e.g., numbered with accent color, or as pill tags, or as icon+text rows)
+- Each slide must look visually different — vary font sizes, layouts, color usage
 
-SLIDE STRUCTURE:
-- Each slide is a <div class="slide"> inside a <div id="slideshow">
-- First slide: large centered title + subtitle + "by {author_name.strip()}"
-- Content slides: title at top, bullets below with custom markers per theme
-- Active slide has class 'slide-active', others have display:none or opacity:0
+━━━ NAVIGATION ━━━
+- Left/right arrow buttons (styled to the design, positioned at slide edges or bottom)
+- Keyboard: ArrowLeft=prev, ArrowRight/Space=next, Home=first, End=last
+- Click/tap anywhere on slide = next (exclude nav buttons with event.stopPropagation)
+- Touch swipe: touchstart + touchend, if deltaX > 50 navigate
+- Slide counter "2 / 10" — elegant, positioned in corner
+- Progress bar (thin, top or bottom of screen)
+- JS functions: goTo(index), next(), prev()
+- Track currentIndex, totalSlides
 
-TECHNICAL REQUIREMENTS:
-- Pure HTML/CSS/JS — NO external dependencies except Google Fonts (ok to use CDN)
-- 100vw x 100vh full screen
-- Mobile responsive (touch swipe support: touchstart + touchend deltaX > 50 = navigate)
-- All slide content from the JSON above — DO NOT invent or skip any slides
-- Include all {len(slides_data)} slides
-- File must work by double-clicking and opening in any browser
+{anim_block}
 
-OUTPUT: Return ONLY the complete HTML file, starting with <!DOCTYPE html>. Nothing else, no explanation, no markdown code blocks."""
+{auto_block}
 
-            html_resp = client.chat.completions.create(
-                messages=[{"role": "user", "content": html_prompt}],
-                model="llama-3.3-70b-versatile",
-                temperature=0.4,
-                max_tokens=16000,
+━━━ TECHNICAL ━━━
+- Single self-contained HTML file — NO external JS libraries
+- Google Fonts via @import in <style> — OK
+- 100vw × 100vh, overflow hidden
+- Only one slide visible at a time
+- Works offline after first load (fonts may need internet)
+- Mobile responsive
+
+━━━ OUTPUT ━━━
+Return ONLY the raw HTML starting with <!DOCTYPE html>
+NO markdown. NO code fences. NO explanation. Just HTML."""
+
+            html_resp = model.generate_content(
+                html_prompt,
+                generation_config=genai.types.GenerationConfig(
+                    temperature=0.9,
+                    max_output_tokens=16000,
+                )
             )
 
-            html_output = html_resp.choices[0].message.content.strip()
+            html_output = html_resp.text.strip()
+            html_output = re.sub(r'^```[a-z]*\n?', '', html_output)
+            html_output = re.sub(r'\n?```$', '', html_output.strip())
 
-            # Strip markdown fences if AI wrapped it
-            if html_output.startswith("```"):
-                html_output = re.sub(r'^```[a-z]*\n?', '', html_output)
-                html_output = re.sub(r'\n?```$', '', html_output.strip())
+            if not (html_output.startswith("<!DOCTYPE") or html_output.startswith("<html")):
+                st.error("❌ Gemini returned invalid output. Please try again.")
+                progress_bar.empty(); status.empty(); st.stop()
 
-            if not html_output.startswith("<!DOCTYPE") and not html_output.startswith("<html"):
-                st.error("❌ AI returned invalid HTML. Please try again.")
-                progress_bar.empty()
-                status_text.empty()
-                st.stop()
-
-            # Step 5: Done
-            status_text.text("✅ Finalizing...")
+            # ── Done ─────────────────────────────────────────────────────────
             progress_bar.progress(100)
             progress_bar.empty()
-            status_text.empty()
+            status.empty()
 
             st.balloons()
-            st.success(f"🎉 **Done!** Your {len(slides_data)}-slide HTML presentation is ready!")
+            st.success(f"🎉 Your {len(slides_data)}-slide presentation is ready!")
 
             col1, col2, col3 = st.columns(3)
-            with col1:
-                st.metric("Slides", len(slides_data))
-            with col2:
-                st.metric("Theme", selected_theme.split()[1] if len(selected_theme.split()) > 1 else selected_theme)
-            with col3:
-                st.metric("Animations", "ON ✨" if enable_animations else "OFF")
+            with col1: st.metric("Slides", len(slides_data))
+            with col2: st.metric("Tone", pres_style)
+            with col3: st.metric("Animations", "ON ✨" if enable_animations else "OFF")
 
-            safe_title = slides_data[0]['title'][:40].replace(' ', '_').replace('/', '_').replace('\\', '_')
-            file_name = f"{safe_title}.html"
-
-            # Preview iframe
             st.markdown("### 👁️ Preview")
-            st.components.v1.html(html_output, height=520, scrolling=False)
+            st.components.v1.html(html_output, height=540, scrolling=False)
 
+            safe_title = re.sub(r'[^\w\s-]', '', slides_data[0].get('title', 'slideshow'))[:40].replace(' ', '_')
             st.markdown("### 📥 Download")
             st.download_button(
-                label="📥 Download as .html file",
+                label="📥 Download .html file",
                 data=html_output.encode("utf-8"),
-                file_name=file_name,
+                file_name=f"{safe_title}.html",
                 mime="text/html",
                 use_container_width=True
             )
 
             st.markdown("""
 <div class="info-card">
-<strong>💡 Tips:</strong><br>
-• Double-click the .html file to open in your browser<br>
-• Use arrow keys or on-screen buttons to navigate<br>
-• Toggle <strong>✨ FX</strong> button to turn animations on/off<br>
-• Browser → Print → Save as PDF to export as PDF
+💡 <strong>Tips:</strong><br>
+• Double-click the .html → opens in any browser<br>
+• Arrow keys or on-screen buttons to navigate<br>
+• <strong>✨</strong> button (bottom-right) toggles animations<br>
+• Browser → Print → Save as PDF to export
 </div>
 """, unsafe_allow_html=True)
 
         except Exception as e:
             progress_bar.empty()
-            status_text.empty()
+            status.empty()
             st.error(f"❌ Error: {str(e)}")
-            st.info("Please try again or rephrase your topic.")
+            st.info("Try again or simplify your topic.")
 
-# Footer
+# ── Footer ─────────────────────────────────────────────────────────────────────
 st.markdown("---")
 st.markdown("""
-<div style="text-align: center; color: #555; padding: 2rem 0; font-family: monospace; font-size: 0.85rem;">
-    <strong style="font-size: 1.1rem;">GENIS 2.0</strong><br>
-    HTML Slideshows · Powered by Groq<br>
-    <span style="opacity:0.5;">© 2025 Genis 2.0</span>
+<div style="text-align:center;color:#555;padding:1.5rem 0;font-family:monospace;font-size:.85rem;">
+    <strong>GENIS 2.0</strong> · HTML Slideshows · Powered by Genis 3.0<br>
+    <span style="opacity:.4;">© 2025 Genis 2.0</span>
 </div>
 """, unsafe_allow_html=True)
