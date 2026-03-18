@@ -1,12 +1,8 @@
 import streamlit as st
 from groq import Groq
-from pptx import Presentation
-from pptx.util import Inches, Pt
-from pptx.enum.text import PP_ALIGN
-from pptx.dml.color import RGBColor
 import io
-import requests
-from io import BytesIO
+import json
+import re
 
 # Page config
 st.set_page_config(
@@ -19,73 +15,88 @@ st.set_page_config(
 # Custom CSS
 st.markdown("""
 <style>
+    @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap');
+
     [data-testid="stSidebar"] {
         min-width: 300px !important;
         max-width: 300px !important;
     }
-    
+
     .block-container {
         max-width: 900px !important;
         padding-left: 2rem;
         padding-right: 2rem;
     }
-    
+
     .big-title {
         text-align: center;
-        font-size: 3.5rem;
-        font-weight: bold;
-        margin-bottom: 0.5rem;
-        background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+        font-size: 3.2rem;
+        font-weight: 800;
+        margin-bottom: 0.3rem;
+        background: linear-gradient(135deg, #00f5d4 0%, #7b2ff7 100%);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
+        font-family: 'Syne', sans-serif;
+        letter-spacing: -1px;
     }
-    
+
     .subtitle {
         text-align: center;
-        font-size: 1.3rem;
-        color: #666;
+        font-size: 1.1rem;
+        color: #888;
         margin-bottom: 2rem;
+        font-family: 'Space Mono', monospace;
+        letter-spacing: 2px;
+        text-transform: uppercase;
     }
-    
+
     .stButton > button {
         width: 100%;
         height: 3.5rem;
-        font-size: 1.3rem;
+        font-size: 1.1rem;
         font-weight: bold;
-        background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
-        color: white;
+        background: linear-gradient(135deg, #00f5d4 0%, #7b2ff7 100%);
+        color: #0a0a0a;
         border: none;
-        border-radius: 10px;
-        margin-top: 1.5rem;
+        border-radius: 8px;
+        margin-top: 1rem;
+        font-family: 'Space Mono', monospace;
+        letter-spacing: 1px;
     }
-    
+
     .stButton > button:hover {
-        background: linear-gradient(90deg, #764ba2 0%, #667eea 100%);
+        opacity: 0.9;
         transform: translateY(-2px);
-        box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        box-shadow: 0 6px 20px rgba(0,245,212,0.3);
     }
-    
-    .info-card {
-        background-color: #f8f9fa;
-        padding: 1.5rem;
+
+    .style-card {
+        background: #111;
+        border: 1px solid #222;
         border-radius: 10px;
-        border-left: 4px solid #667eea;
-        margin: 1rem 0;
+        padding: 1rem;
+        margin-bottom: 0.5rem;
+        cursor: pointer;
+        transition: border-color 0.2s;
     }
-    
-    .color-preview {
-        display: inline-block;
-        width: 20px;
-        height: 20px;
-        border-radius: 3px;
-        margin-right: 8px;
-        vertical-align: middle;
-        border: 1px solid #ddd;
+
+    .style-card:hover {
+        border-color: #00f5d4;
+    }
+
+    .info-card {
+        background: #0d1117;
+        padding: 1.2rem;
+        border-radius: 10px;
+        border-left: 3px solid #00f5d4;
+        margin: 1rem 0;
+        font-family: 'Space Mono', monospace;
+        font-size: 0.85rem;
     }
 </style>
 """, unsafe_allow_html=True)
 
-# Get API keys from secrets
+# API setup
 try:
     groq_key = st.secrets["GROQ_API_KEY"]
     client = Groq(api_key=groq_key)
@@ -93,553 +104,372 @@ try:
 except:
     api_available = False
 
-try:
-    pexels_key = st.secrets["PEXELS_API_KEY"]
-    pexels_available = True
-except:
-    pexels_available = False
-
-# Initialize session state
-if "example_prompts" not in st.session_state:
-    st.session_state.example_prompts = []
-if "selected_example" not in st.session_state:
-    st.session_state.selected_example = ""
-
-# Color themes
-COLOR_THEMES = {
-    "Blue Ocean 🌊": {
-        "dark": RGBColor(25, 50, 100),
-        "accent": RGBColor(66, 135, 245),
-        "preview": "#1a3264"
+# Style presets
+STYLE_PRESETS = {
+    "🌑 Dark / Neon (Cyberpunk)": {
+        "description": "Dark background, glowing neon accents, futuristic typography",
+        "prompt": """Dark cyberpunk aesthetic. Background: #0a0a0f. Neon accent colors: #00f5d4 (cyan) and #ff2d78 (pink). 
+        Font: use Google Fonts 'Orbitron' for titles, 'Share Tech Mono' for body. 
+        Slide title: glowing text-shadow in cyan. Bullets: neon green dots (#39ff14). 
+        Slide number in corner with neon glow. Add subtle scanline CSS overlay (repeating-linear-gradient). 
+        Navigation buttons: dark with neon border. Progress bar: neon gradient."""
     },
-    "Forest Green 🌲": {
-        "dark": RGBColor(27, 94, 32),
-        "accent": RGBColor(102, 187, 106),
-        "preview": "#1b5e20"
+    "🤍 Clean / Minimal (White)": {
+        "description": "Pure white, razor-sharp typography, extreme negative space",
+        "prompt": """Ultra-minimal editorial aesthetic. Background: #fafafa. Text: #0d0d0d. 
+        Font: use Google Fonts 'Playfair Display' for titles, 'DM Sans' for body. 
+        Accent: single color #1a1a2e. Generous padding and whitespace. 
+        Slide number: subtle small text top-right. Thin 1px lines as dividers. 
+        Navigation: minimal text arrows. No shadows, no gradients — pure type and space."""
     },
-    "Sunset Orange 🌅": {
-        "dark": RGBColor(191, 54, 12),
-        "accent": RGBColor(255, 152, 0),
-        "preview": "#bf360c"
+    "💼 Bold / Corporate": {
+        "description": "Strong structure, confident colors, authoritative presence",
+        "prompt": """Bold corporate powerhouse aesthetic. Background: #0f1923. Accent: #f7c948 (gold). 
+        Font: use Google Fonts 'Barlow Condensed' (800 weight) for titles, 'IBM Plex Sans' for body. 
+        Titles: massive, all-caps, tracked. Left accent bar: 4px solid gold on slide titles. 
+        Bullets: gold square markers. Navigation: rectangular flat buttons in gold. 
+        Slide counter: gold / total in corner. Dark professional feel with high contrast."""
     },
-    "Royal Purple 👑": {
-        "dark": RGBColor(74, 20, 140),
-        "accent": RGBColor(156, 39, 176),
-        "preview": "#4a148c"
+    "🌈 Gradient / Modern": {
+        "description": "Lush mesh gradients, glass morphism, smooth and contemporary",
+        "prompt": """Modern glassmorphism + gradient mesh aesthetic. Background: deep gradient #0f0c29 → #302b63 → #24243e. 
+        Frosted glass slide cards: background rgba(255,255,255,0.05), backdrop-filter blur(20px), border 1px solid rgba(255,255,255,0.1). 
+        Font: use Google Fonts 'Plus Jakarta Sans' for titles, 'Nunito' for body. 
+        Accent: vivid gradient text on titles (#f953c6 → #b91d73). 
+        Navigation: glass pill buttons with hover glow. Smooth slide transitions with scale + fade."""
     },
-    "Ruby Red 💎": {
-        "dark": RGBColor(183, 28, 28),
-        "accent": RGBColor(244, 67, 54),
-        "preview": "#b71c1c"
-    },
-    "Midnight Black 🌙": {
-        "dark": RGBColor(33, 33, 33),
-        "accent": RGBColor(97, 97, 97),
-        "preview": "#212121"
-    },
-    "Teal Wave 🏄": {
-        "dark": RGBColor(0, 77, 64),
-        "accent": RGBColor(0, 150, 136),
-        "preview": "#004d40"
-    },
-    "Pink Blossom 🌸": {
-        "dark": RGBColor(136, 14, 79),
-        "accent": RGBColor(233, 30, 99),
-        "preview": "#880e4f"
+    "✏️ Custom": {
+        "description": "Describe your own style",
+        "prompt": None
     }
 }
 
-def get_pexels_image(query):
-    """Fetch image from Pexels API"""
-    if not pexels_available:
-        return None
-    
-    try:
-        headers = {
-            "Authorization": st.secrets["PEXELS_API_KEY"]
-        }
-        url = f"https://api.pexels.com/v1/search?query={query}&per_page=1&orientation=landscape"
-        response = requests.get(url, headers=headers, timeout=10)
-        
-        if response.status_code == 200:
-            data = response.json()
-            if data.get("photos") and len(data["photos"]) > 0:
-                image_url = data["photos"][0]["src"]["large"]
-                img_response = requests.get(image_url, timeout=10)
-                if img_response.status_code == 200:
-                    return BytesIO(img_response.content)
-        return None
-    except Exception as e:
-        return None
+# Animation descriptions for the AI
+ANIMATION_STYLES = {
+    "🌑 Dark / Neon (Cyberpunk)": "glitch-flicker entrance for title, scan-line wipe for bullets",
+    "🤍 Clean / Minimal (White)": "elegant fade-up for title, staggered fade-in for bullets",
+    "💼 Bold / Corporate": "slide-in-left for title, cascade drop for bullets",
+    "🌈 Gradient / Modern": "scale-up with blur-clear for title, float-up stagger for bullets",
+    "✏️ Custom": "smooth fade and slide-up transitions"
+}
 
-# Sidebar
+# ─── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown("## 🎯 Genis 2.0")
     st.markdown("---")
-    
     st.markdown("### ⚡ Features")
     st.markdown("""
-    - 🎨 Custom color themes
-    - 🖼️ AI-powered images
-    - 📊 Professional layouts
-    - 📱 Mobile compatible
-    - 💾 Instant download
+- 🎨 4 style presets + custom
+- 💡 AI-generated HTML slides
+- 🎬 Slide animations toggle
+- ⌨️ Keyboard + click navigation
+- 🔄 Auto-advance mode
+- 📥 Download as .html
     """)
-    
     st.markdown("---")
-    
-    st.markdown("### 📱 Device Support")
-    st.success("✅ Works on all devices")
+    st.markdown("### 📱 Opening the file")
+    st.info("Double-click the downloaded `.html` file — opens in any browser on any device.")
     st.markdown("""
-    **iPhone/iPad:**  
-    PowerPoint or Keynote
-    
-    **Android:**  
-    PowerPoint or Google Slides
-    
-    **Desktop:**  
-    PowerPoint, Google Slides, LibreOffice
+**Print to PDF:**  
+Browser → Print → Save as PDF  
+(preserves full styling)
     """)
-    
     st.markdown("---")
-    
     st.markdown("### 🔢 Limits")
-    st.info("**Max slides:** 100  \n**Min slides:** 5")
-    
+    st.info("**Max slides:** 60  \n**Min slides:** 3")
     st.markdown("---")
-    
-    # Status indicators
     if not api_available:
         st.error("⚠️ Groq API not configured")
     else:
         st.success("✅ AI System Ready")
-    
-    if not pexels_available:
-        st.warning("⚠️ Images disabled (no Pexels key)")
-    else:
-        st.success("✅ Image System Ready")
-    
     st.markdown("---")
     st.caption("© 2025 Genis 2.0")
 
-# Main content
+# ─── Main ──────────────────────────────────────────────────────────────────────
 st.markdown('<div class="big-title">🎯 Genis 2.0</div>', unsafe_allow_html=True)
-st.markdown('<div class="subtitle">Professional Slideshow Generator</div>', unsafe_allow_html=True)
-
-# Generate example prompts
-if not st.session_state.example_prompts and api_available:
-    with st.spinner("🎲 Generating example ideas..."):
-        try:
-            example_prompt = """Generate 4 diverse and interesting slideshow topic examples. 
-            Make them varied across different fields (business, education, science, technology, health, history, etc.).
-            
-            Format each as a complete request like:
-            "Create a 12-slide presentation about [topic]"
-            
-            Make them specific and engaging. Return ONLY the 4 examples, one per line, nothing else."""
-            
-            response = client.chat.completions.create(
-                messages=[{"role": "user", "content": example_prompt}],
-                model="llama-3.3-70b-versatile",
-                temperature=0.9,
-                max_tokens=300,
-            )
-            
-            examples = response.choices[0].message.content.strip().split('\n')
-            st.session_state.example_prompts = [ex.strip() for ex in examples if ex.strip()]
-        except:
-            st.session_state.example_prompts = [
-                "Create a 10-slide presentation about renewable energy sources",
-                "Create a 15-slide presentation about the human brain and memory",
-                "Create a 12-slide presentation about digital marketing strategies",
-                "Create an 8-slide presentation about ancient Egyptian civilization"
-            ]
-
-# Show examples
-if st.session_state.example_prompts:
-    st.markdown("### 💡 Need inspiration? Try these:")
-    
-    cols = st.columns(2)
-    for idx, example in enumerate(st.session_state.example_prompts[:4]):
-        with cols[idx % 2]:
-            if st.button(f"📄 {example}", key=f"example_{idx}", use_container_width=True):
-                st.session_state.selected_example = example
-
-# Refresh examples button
-col1, col2, col3 = st.columns([1, 1, 1])
-with col2:
-    if st.button("🔄 New Examples", use_container_width=True):
-        st.session_state.example_prompts = []
-        st.rerun()
+st.markdown('<div class="subtitle">HTML Slideshow Generator</div>', unsafe_allow_html=True)
 
 st.markdown("---")
 
-# Input fields
+# Author name
 st.markdown("### 👤 Your Information")
-
 author_name = st.text_input(
-    "Your Name (will appear on title slide)",
-    placeholder="e.g., Bogdan Hapco",
-    help="This will be shown as the author on the first slide"
+    "Your Name (appears on title slide)",
+    placeholder="e.g., John Smith"
 )
 
+# Topic
 st.markdown("### 📝 What would you like to create?")
+topic = st.text_area(
+    "Describe your slideshow:",
+    placeholder="Example: Create a 10-slide presentation about the future of AI in healthcare",
+    height=100,
+    label_visibility="collapsed"
+)
 
-# Topic input
-if st.session_state.selected_example:
-    topic = st.text_area(
-        "Describe your slideshow:",
-        value=st.session_state.selected_example,
-        placeholder="Example: Create a 10-slide presentation about climate change",
-        height=100,
-        label_visibility="collapsed",
-        key="topic_input"
-    )
-else:
-    topic = st.text_area(
-        "Describe your slideshow:",
-        placeholder="Example: Create a 10-slide presentation about climate change",
-        height=100,
-        label_visibility="collapsed",
-        key="topic_input"
-    )
-
-# Advanced options
+# Options
 with st.expander("⚙️ Customization Options", expanded=True):
     col1, col2 = st.columns(2)
-    
+
     with col1:
         num_slides = st.number_input(
-            "Number of slides", 
-            min_value=5, 
-            max_value=100, 
-            value=10,
-            help="Choose between 5 and 100 slides"
+            "Number of slides",
+            min_value=3,
+            max_value=60,
+            value=10
         )
-        
-        style = st.selectbox(
+        pres_style = st.selectbox(
             "Presentation style",
-            ["Professional", "Creative", "Educational", "Minimal", "Bold", "Modern"]
+            ["Professional", "Creative", "Educational", "Storytelling", "Technical"]
         )
-    
+
     with col2:
-        # Color theme selector
-        st.markdown("**Color Theme**")
         selected_theme = st.selectbox(
-            "Choose your color scheme",
-            list(COLOR_THEMES.keys()),
+            "Visual theme",
+            list(STYLE_PRESETS.keys())
+        )
+        enable_animations = st.toggle("🎬 Enable slide animations", value=True)
+        auto_advance = st.toggle("⏩ Auto-advance slides", value=False)
+        if auto_advance:
+            advance_seconds = st.slider("Seconds per slide", 2, 15, 5)
+        else:
+            advance_seconds = 0
+
+    # Custom style input
+    if selected_theme == "✏️ Custom":
+        st.markdown("**Describe your custom style:**")
+        custom_style_desc = st.text_area(
+            "Style description",
+            placeholder="e.g., Retro 80s vibe, warm sunset colors (#ff6b35, #f7c59f), serif fonts, vintage grain texture overlay, bold italic titles...",
+            height=100,
             label_visibility="collapsed"
         )
-        
-        # Show color preview
-        theme_colors = COLOR_THEMES[selected_theme]
-        st.markdown(f"""
-        <div style="margin-top: 10px;">
-            <span class="color-preview" style="background-color: {theme_colors['preview']};"></span>
-            <span style="font-size: 0.9rem; color: #666;">Selected theme preview</span>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        # Image option
-        if pexels_available:
-            add_images = st.checkbox(
-                "🖼️ Add professional images to slides",
-                value=True,
-                help="Automatically adds relevant images from Pexels"
-            )
-        else:
-            st.info("📸 Images disabled - add PEXELS_API_KEY to enable")
-            add_images = False
+    else:
+        custom_style_desc = ""
+        theme_info = STYLE_PRESETS[selected_theme]
+        st.markdown(f"**Preview:** *{theme_info['description']}*")
 
-# Generate button
-if st.button("🚀 Generate Slideshow"):
-    st.session_state.selected_example = ""
-    
+# ─── Generate ──────────────────────────────────────────────────────────────────
+if st.button("🚀 Generate HTML Slideshow"):
     if not api_available:
-        st.error("❌ System not configured. Please contact administrator.")
+        st.error("❌ Groq API not configured.")
     elif not topic or len(topic.strip()) < 10:
-        st.warning("⚠️ Please enter a more detailed topic for your slideshow.")
+        st.warning("⚠️ Please enter a more detailed topic.")
     elif not author_name or len(author_name.strip()) < 2:
-        st.warning("⚠️ Please enter your name to continue.")
+        st.warning("⚠️ Please enter your name.")
+    elif selected_theme == "✏️ Custom" and len(custom_style_desc.strip()) < 15:
+        st.warning("⚠️ Please describe your custom style in more detail.")
     else:
         progress_bar = st.progress(0)
         status_text = st.empty()
-        
+
         try:
-            # Step 1: Preparing
-            status_text.text("🔄 Initializing Genis 2.0...")
-            progress_bar.progress(10)
-            
-            # Create enhanced prompt
-            enhanced_prompt = f"""Create slideshow content about: "{topic}"
+            # Step 1: Build style prompt
+            if selected_theme == "✏️ Custom":
+                style_prompt = custom_style_desc.strip()
+                anim_style = "smooth fade and slide-up transitions"
+            else:
+                style_prompt = STYLE_PRESETS[selected_theme]["prompt"]
+                anim_style = ANIMATION_STYLES[selected_theme]
+
+            animation_instructions = ""
+            if enable_animations:
+                animation_instructions = f"""
+ANIMATIONS: Include CSS keyframe animations on each slide.
+- Title animates in on slide enter: {anim_style}
+- Bullet points stagger in one by one (animation-delay: 0.1s increments)
+- Add a class 'slide-active' that triggers animations — JS adds this class when slide becomes visible
+- Use will-change: transform for performance
+"""
+            else:
+                animation_instructions = "ANIMATIONS: No animations. All elements appear instantly."
+
+            auto_advance_js = ""
+            if auto_advance and advance_seconds > 0:
+                auto_advance_js = f"setInterval(() => {{ if(currentSlide < totalSlides - 1) goToSlide(currentSlide + 1); }}, {advance_seconds * 1000});"
+
+            # Step 2: Generate slide content
+            status_text.text("🧠 Generating slide content...")
+            progress_bar.progress(15)
+
+            content_prompt = f"""Create slideshow content for: "{topic}"
 
 Requirements:
 - Number of slides: {num_slides}
-- Style: {style}
+- Style: {pres_style}
+- First slide: title slide only (no bullets)
+- Last slide: strong conclusion/summary
+- Each content slide: 3-5 concise bullet points (not full sentences, punchy)
 
-Provide content in this EXACT format:
+Respond in this EXACT format, nothing else:
 
 SLIDE 1:
-TITLE: [Compelling title for the presentation]
-CONTENT:
-- [This is the title slide, no bullet points needed]
+TITLE: [Main presentation title]
+SUBTITLE: [optional short tagline or leave blank]
 
 SLIDE 2:
-TITLE: [Slide title]
-CONTENT:
-- [Bullet point 1]
-- [Bullet point 2]
-- [Bullet point 3]
+TITLE: [slide title]
+BULLETS:
+- [point 1]
+- [point 2]
+- [point 3]
 
-Continue for all {num_slides} slides. Last slide should be a strong conclusion.
-Make content informative, engaging, and well-structured."""
+Continue this pattern for all {num_slides} slides. No extra commentary."""
 
-            # Step 2: Generating content
-            status_text.text("🧠 Generating content...")
-            progress_bar.progress(20)
-            
-            chat_completion = client.chat.completions.create(
-                messages=[{"role": "user", "content": enhanced_prompt}],
-                model="openai/gpt-oss-120b",
+            content_resp = client.chat.completions.create(
+                messages=[{"role": "user", "content": content_prompt}],
+                model="llama-3.3-70b-versatile",
                 temperature=0.7,
-                max_tokens=8000,
+                max_tokens=6000,
             )
-            
-            response_text = chat_completion.choices[0].message.content
-            
-            # Step 3: Parsing content
+            raw_content = content_resp.choices[0].message.content
+
+            # Step 3: Parse slides
             status_text.text("📊 Structuring slides...")
             progress_bar.progress(35)
-            
-            lines = response_text.split('\n')
+
             slides_data = []
             current_slide = None
-            
-            for line in lines:
+            in_bullets = False
+
+            for line in raw_content.split('\n'):
                 line = line.strip()
-                if line.startswith('SLIDE '):
+                if re.match(r'^SLIDE \d+:', line):
                     if current_slide:
                         slides_data.append(current_slide)
-                    current_slide = {"title": "", "content": []}
-                elif line.startswith('TITLE:'):
-                    if current_slide is not None:
-                        current_slide["title"] = line.replace('TITLE:', '').strip()
-                elif (line.startswith('- ') or line.startswith('• ')) and current_slide is not None:
-                    current_slide["content"].append(line[2:].strip())
-            
+                    current_slide = {"title": "", "subtitle": "", "bullets": []}
+                    in_bullets = False
+                elif line.startswith('TITLE:') and current_slide is not None:
+                    current_slide["title"] = line.replace('TITLE:', '').strip()
+                elif line.startswith('SUBTITLE:') and current_slide is not None:
+                    current_slide["subtitle"] = line.replace('SUBTITLE:', '').strip()
+                elif line == 'BULLETS:':
+                    in_bullets = True
+                elif (line.startswith('- ') or line.startswith('• ')) and in_bullets and current_slide is not None:
+                    current_slide["bullets"].append(line[2:].strip())
+
             if current_slide:
                 slides_data.append(current_slide)
-            
+
             if not slides_data:
-                st.error("❌ Failed to generate slideshow. Please try again.")
+                st.error("❌ Failed to parse slide content. Please try again.")
                 progress_bar.empty()
                 status_text.empty()
-            else:
-                # Step 4: Fetching images
-                image_data = {}
-                images_fetched = 0
-                
-                if add_images and pexels_available:
-                    status_text.text("🖼️ Finding perfect images...")
-                    progress_bar.progress(50)
-                    
-                    # Get main keywords from topic
-                    topic_words = topic.lower().replace("create", "").replace("presentation", "").replace("about", "").replace("slide", "").strip()
-                    
-                    # Fetch images for select slides (every 3rd slide, max 4 images)
-                    for idx in range(2, min(len(slides_data), 14), 3):
-                        if idx < len(slides_data):
-                            # Use slide title for search
-                            search_query = slides_data[idx]["title"].split()[:3]
-                            search_term = " ".join(search_query)
-                            
-                            img = get_pexels_image(search_term)
-                            if img:
-                                image_data[idx] = img
-                                images_fetched += 1
-                                status_text.text(f"🖼️ Found {images_fetched} images...")
-                
-                # Step 5: Creating presentation
-                status_text.text("🎨 Designing presentation...")
-                progress_bar.progress(70)
-                
-                prs = Presentation()
-                prs.slide_width = Inches(10)
-                prs.slide_height = Inches(5.625)
-                
-                # Get selected colors
-                DARK_COLOR = COLOR_THEMES[selected_theme]["dark"]
-                ACCENT_COLOR = COLOR_THEMES[selected_theme]["accent"]
-                WHITE = RGBColor(255, 255, 255)
-                GRAY = RGBColor(80, 80, 80)
-                
-                for idx, slide_data in enumerate(slides_data):
-                    blank_layout = prs.slide_layouts[6]
-                    slide = prs.slides.add_slide(blank_layout)
-                    
-                    if idx == 0:
-                        # Title slide
-                        background = slide.shapes.add_shape(
-                            1, 0, 0, prs.slide_width, prs.slide_height
-                        )
-                        background.fill.solid()
-                        background.fill.fore_color.rgb = DARK_COLOR
-                        background.line.fill.background()
-                        
-                        title_box = slide.shapes.add_textbox(
-                            Inches(1), Inches(1.5), Inches(8), Inches(1.8)
-                        )
-                        title_frame = title_box.text_frame
-                        title_frame.text = slide_data["title"]
-                        title_frame.word_wrap = True
-                        title_para = title_frame.paragraphs[0]
-                        title_para.font.size = Pt(48)
-                        title_para.font.bold = True
-                        title_para.font.color.rgb = WHITE
-                        title_para.alignment = PP_ALIGN.CENTER
-                        
-                        subtitle_box = slide.shapes.add_textbox(
-                            Inches(1), Inches(3.5), Inches(8), Inches(0.6)
-                        )
-                        subtitle_frame = subtitle_box.text_frame
-                        subtitle_frame.text = f"by {author_name.strip()}"
-                        subtitle_para = subtitle_frame.paragraphs[0]
-                        subtitle_para.font.size = Pt(24)
-                        subtitle_para.font.color.rgb = ACCENT_COLOR
-                        subtitle_para.alignment = PP_ALIGN.CENTER
-                        
-                    else:
-                        # Content slides
-                        background = slide.shapes.add_shape(
-                            1, 0, 0, prs.slide_width, prs.slide_height
-                        )
-                        background.fill.solid()
-                        background.fill.fore_color.rgb = WHITE
-                        background.line.fill.background()
-                        
-                        accent = slide.shapes.add_shape(
-                            1, 0, 0, prs.slide_width, Inches(0.2)
-                        )
-                        accent.fill.solid()
-                        accent.fill.fore_color.rgb = ACCENT_COLOR
-                        accent.line.fill.background()
-                        
-                        # Check if slide has image
-                        has_image = idx in image_data
-                        
-                        if has_image:
-                            # Split layout
-                            title_box = slide.shapes.add_textbox(
-                                Inches(0.5), Inches(0.5), Inches(5), Inches(0.8)
-                            )
-                            title_frame = title_box.text_frame
-                            title_frame.text = slide_data["title"]
-                            title_para = title_frame.paragraphs[0]
-                            title_para.font.size = Pt(30)
-                            title_para.font.bold = True
-                            title_para.font.color.rgb = DARK_COLOR
-                            
-                            # Add image
-                            try:
-                                img_stream = image_data[idx]
-                                pic = slide.shapes.add_picture(
-                                    img_stream,
-                                    Inches(5.5), Inches(1.2),
-                                    width=Inches(4), height=Inches(3.8)
-                                )
-                            except Exception as e:
-                                pass
-                            
-                            # Content
-                            if slide_data["content"]:
-                                content_box = slide.shapes.add_textbox(
-                                    Inches(0.8), Inches(1.7), Inches(4.4), Inches(3.3)
-                                )
-                                text_frame = content_box.text_frame
-                                text_frame.word_wrap = True
-                                
-                                for point in slide_data["content"]:
-                                    p = text_frame.add_paragraph()
-                                    p.text = point
-                                    p.level = 0
-                                    p.font.size = Pt(16)
-                                    p.font.color.rgb = GRAY
-                                    p.space_before = Pt(10)
-                                    p.space_after = Pt(6)
-                        else:
-                            # Full width
-                            title_box = slide.shapes.add_textbox(
-                                Inches(0.5), Inches(0.5), Inches(9), Inches(0.8)
-                            )
-                            title_frame = title_box.text_frame
-                            title_frame.text = slide_data["title"]
-                            title_para = title_frame.paragraphs[0]
-                            title_para.font.size = Pt(36)
-                            title_para.font.bold = True
-                            title_para.font.color.rgb = DARK_COLOR
-                            
-                            if slide_data["content"]:
-                                content_box = slide.shapes.add_textbox(
-                                    Inches(1.2), Inches(1.8), Inches(7.6), Inches(3.2)
-                                )
-                                text_frame = content_box.text_frame
-                                text_frame.word_wrap = True
-                                
-                                for point in slide_data["content"]:
-                                    p = text_frame.add_paragraph()
-                                    p.text = point
-                                    p.level = 0
-                                    p.font.size = Pt(20)
-                                    p.font.color.rgb = GRAY
-                                    p.space_before = Pt(14)
-                                    p.space_after = Pt(8)
-                
-                # Step 6: Finalizing
-                status_text.text("✅ Finalizing presentation...")
-                progress_bar.progress(95)
-                
-                pptx_bytes = io.BytesIO()
-                prs.save(pptx_bytes)
-                pptx_bytes.seek(0)
-                
-                progress_bar.progress(100)
+                st.stop()
+
+            # Step 4: Generate HTML
+            status_text.text("🎨 Designing your HTML slideshow...")
+            progress_bar.progress(55)
+
+            slides_json = json.dumps(slides_data, ensure_ascii=False)
+
+            html_prompt = f"""Generate a complete, self-contained HTML5 slideshow presentation file.
+
+SLIDE DATA (JSON):
+{slides_json}
+
+AUTHOR: {author_name.strip()}
+TOTAL SLIDES: {len(slides_data)}
+
+VISUAL STYLE:
+{style_prompt}
+
+{animation_instructions}
+
+AUTO-ADVANCE JS (insert after navigation setup if not empty): {auto_advance_js if auto_advance_js else "// no auto-advance"}
+
+NAVIGATION REQUIREMENTS:
+1. Left/right on-screen arrow buttons (elegant, styled to theme)
+2. Keyboard: ArrowLeft, ArrowRight, Space (next), Home (first), End (last)
+3. Slide counter: "3 / 10" format, styled to theme
+4. Progress bar at top or bottom
+5. Click/tap anywhere on slide = next slide
+
+ANIMATION TOGGLE:
+- Add a small toggle button in corner labeled "✨ FX" 
+- When clicked, adds/removes class 'animations-off' on <body>
+- When 'animations-off': all transitions instant (transition: none !important on everything)
+- Default state: animations {"ON" if enable_animations else "OFF"} (set class accordingly on load)
+
+SLIDE STRUCTURE:
+- Each slide is a <div class="slide"> inside a <div id="slideshow">
+- First slide: large centered title + subtitle + "by {author_name.strip()}"
+- Content slides: title at top, bullets below with custom markers per theme
+- Active slide has class 'slide-active', others have display:none or opacity:0
+
+TECHNICAL REQUIREMENTS:
+- Pure HTML/CSS/JS — NO external dependencies except Google Fonts (ok to use CDN)
+- 100vw x 100vh full screen
+- Mobile responsive (touch swipe support: touchstart + touchend deltaX > 50 = navigate)
+- All slide content from the JSON above — DO NOT invent or skip any slides
+- Include all {len(slides_data)} slides
+- File must work by double-clicking and opening in any browser
+
+OUTPUT: Return ONLY the complete HTML file, starting with <!DOCTYPE html>. Nothing else, no explanation, no markdown code blocks."""
+
+            html_resp = client.chat.completions.create(
+                messages=[{"role": "user", "content": html_prompt}],
+                model="llama-3.3-70b-versatile",
+                temperature=0.4,
+                max_tokens=16000,
+            )
+
+            html_output = html_resp.choices[0].message.content.strip()
+
+            # Strip markdown fences if AI wrapped it
+            if html_output.startswith("```"):
+                html_output = re.sub(r'^```[a-z]*\n?', '', html_output)
+                html_output = re.sub(r'\n?```$', '', html_output.strip())
+
+            if not html_output.startswith("<!DOCTYPE") and not html_output.startswith("<html"):
+                st.error("❌ AI returned invalid HTML. Please try again.")
                 progress_bar.empty()
                 status_text.empty()
-                
-                st.balloons()
-                st.success(f"🎉 **Success!** Your {len(slides_data)}-slide presentation is ready!")
-                
-                # Stats
-                col1, col2, col3, col4 = st.columns(4)
-                with col1:
-                    st.metric("Slides", len(slides_data))
-                with col2:
-                    st.metric("Style", style)
-                with col3:
-                    st.metric("Theme", selected_theme.split()[0])
-                with col4:
-                    st.metric("Images", images_fetched)
-                
-                safe_title = slides_data[0]['title'][:40].replace(' ', '_').replace('/', '_').replace('\\', '_')
-                file_name = f"{safe_title}.pptx"
-                
-                st.download_button(
-                    label="📥 Download Presentation",
-                    data=pptx_bytes.getvalue(),
-                    file_name=file_name,
-                    mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
-                    use_container_width=True
-                )
-                
-                st.markdown("""
-                <div class="info-card">
-                    <strong>📱 Opening on your device:</strong><br>
-                    • <strong>iPhone/iPad:</strong> PowerPoint or Keynote app<br>
-                    • <strong>Android:</strong> PowerPoint or Google Slides<br>
-                    • <strong>Desktop:</strong> PowerPoint, Google Slides, or LibreOffice
-                </div>
-                """, unsafe_allow_html=True)
-                
+                st.stop()
+
+            # Step 5: Done
+            status_text.text("✅ Finalizing...")
+            progress_bar.progress(100)
+            progress_bar.empty()
+            status_text.empty()
+
+            st.balloons()
+            st.success(f"🎉 **Done!** Your {len(slides_data)}-slide HTML presentation is ready!")
+
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Slides", len(slides_data))
+            with col2:
+                st.metric("Theme", selected_theme.split()[1] if len(selected_theme.split()) > 1 else selected_theme)
+            with col3:
+                st.metric("Animations", "ON ✨" if enable_animations else "OFF")
+
+            safe_title = slides_data[0]['title'][:40].replace(' ', '_').replace('/', '_').replace('\\', '_')
+            file_name = f"{safe_title}.html"
+
+            # Preview iframe
+            st.markdown("### 👁️ Preview")
+            st.components.v1.html(html_output, height=520, scrolling=False)
+
+            st.markdown("### 📥 Download")
+            st.download_button(
+                label="📥 Download as .html file",
+                data=html_output.encode("utf-8"),
+                file_name=file_name,
+                mime="text/html",
+                use_container_width=True
+            )
+
+            st.markdown("""
+<div class="info-card">
+<strong>💡 Tips:</strong><br>
+• Double-click the .html file to open in your browser<br>
+• Use arrow keys or on-screen buttons to navigate<br>
+• Toggle <strong>✨ FX</strong> button to turn animations on/off<br>
+• Browser → Print → Save as PDF to export as PDF
+</div>
+""", unsafe_allow_html=True)
+
         except Exception as e:
             progress_bar.empty()
             status_text.empty()
@@ -649,12 +479,9 @@ Make content informative, engaging, and well-structured."""
 # Footer
 st.markdown("---")
 st.markdown("""
-<div style="text-align: center; color: #666; padding: 2rem 0;">
-    <h3 style="background: linear-gradient(90deg, #667eea 0%, #764ba2 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">
-        Genis 2.0
-    </h3>
-    <p>Professional Slideshows in Seconds</p>
-    <p style="font-size: 0.9rem; margin-top: 1rem;">© 2025 Genis 2.0. All presentations created are owned by you.</p>
+<div style="text-align: center; color: #555; padding: 2rem 0; font-family: monospace; font-size: 0.85rem;">
+    <strong style="font-size: 1.1rem;">GENIS 2.0</strong><br>
+    HTML Slideshows · Powered by Groq<br>
+    <span style="opacity:0.5;">© 2025 Genis 2.0</span>
 </div>
 """, unsafe_allow_html=True)
-
