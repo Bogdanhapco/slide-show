@@ -279,7 +279,7 @@ st.markdown("### 👤 Your Information")
 
 author_name = st.text_input(
     "Your Name (will appear on title slide)",
-    placeholder="e.g., John Smith",
+    placeholder="e.g., Bogdan Hapco",
     help="This will be shown as the author on the first slide"
 )
 
