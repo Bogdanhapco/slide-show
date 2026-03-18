@@ -98,7 +98,7 @@ st.markdown("---")
 st.markdown("### 👤 Author")
 author_name = st.text_input(
     "Your name (shown on title slide)",
-    placeholder="e.g. John Smith"
+    placeholder="e.g. Bogdan Hapco"
 )
 
 st.markdown("### 📝 Topic")
