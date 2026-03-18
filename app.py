@@ -5,7 +5,7 @@ import json
 
 # ── Page config ────────────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="Genis 3 – Slideshow Generator",
+    page_title="Genis 2.0 – Slideshow Generator",
     page_icon="🎯",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -57,11 +57,11 @@ MODEL = "openai/gpt-oss-120b"
 
 # ── Sidebar ────────────────────────────────────────────────────────────────────
 with st.sidebar:
-    st.markdown("## 🎯 Genis 3")
+    st.markdown("## 🎯 Genis 2.0")
     st.markdown("---")
     st.markdown("### ⚡ Features")
     st.markdown("""
-- 🤖 new Genis 3 model
+- 🤖 new Genis 3
 - 🎨 Fully AI-designed unique themes
 - 🎬 Per-slide entrance animations
 - ✨ FX toggle inside slideshow
@@ -86,19 +86,19 @@ Get key free at [console.groq.com](https://console.groq.com)
     if not api_available:
         st.error("⚠️ GROQ_API_KEY not configured")
     else:
-        st.success("✅ Genis 3 Ready")
+        st.success("✅ Genis 3 120B Ready")
     st.markdown("---")
-    st.caption("© 2025 Genis 3")
+    st.caption("© 2025 Genis 2.0")
 
 # ── Main UI ────────────────────────────────────────────────────────────────────
-st.markdown('<div class="big-title">🎯 Genis 3</div>', unsafe_allow_html=True)
+st.markdown('<div class="big-title">🎯 Genis 2.0</div>', unsafe_allow_html=True)
 st.markdown('<div class="subtitle">AI HTML Slideshow Generator</div>', unsafe_allow_html=True)
 st.markdown("---")
 
 st.markdown("### 👤 Author")
 author_name = st.text_input(
     "Your name (shown on title slide)",
-    placeholder="e.g. Bogdan hapco"
+    placeholder="e.g. John Smith"
 )
 
 st.markdown("### 📝 Topic")
@@ -326,7 +326,7 @@ Each type gets a DISTINCT, purpose-built layout:
   Title above the grid.
 
 "quote" →
-  Giant decorative quotation mark (""") as a design element — large, accent color, positioned behind text.
+  Giant decorative quotation mark (" " ") as a design element — large, accent color, positioned behind text.
   Quote text: large, elegant, italic, centered or left-aligned.
   Attribution: small, below, with a thin decorative rule above it.
 
@@ -455,7 +455,7 @@ NO markdown. NO code fences. NO explanation. Just the HTML."""
 st.markdown("---")
 st.markdown("""
 <div style="text-align:center;color:#555;padding:1.5rem 0;font-family:monospace;font-size:.85rem;">
-    <strong>GENIS 3</strong> · HTML Slideshows · Powered by Genis 3<br>
+    <strong>GENIS 2.0</strong> · HTML Slideshows · Powered by Genis 3<br>
     <span style="opacity:.4;">© 2025 Genis 2.0</span>
 </div>
 """, unsafe_allow_html=True)
