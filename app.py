@@ -71,15 +71,6 @@ with st.sidebar:
 - 🖨️ Print → PDF export
     """)
     st.markdown("---")
-    st.markdown("### 🔑 Setup")
-    st.markdown("""
-Add to Streamlit secrets:
-```
-GROQ_API_KEY = "your-key-here"
-```
-Get key free at [console.groq.com](https://console.groq.com)
-    """)
-    st.markdown("---")
     st.markdown("### 📂 Using the file")
     st.info("Double-click the `.html` file → opens in any browser.\n\nBrowser → Print → Save as PDF to share.")
     st.markdown("---")
@@ -321,12 +312,12 @@ Each type gets a DISTINCT, purpose-built layout:
   oversized accent word (10-15vw, barely visible), geometric art, gradient — NO body text on right.
 
 "grid" →
-  Render grid_items as cards in CSS grid (2×2 or 2×3 depending on count).
+  Render grid_items as cards in CSS grid (2x2 or 2x3 depending on count).
   Each card: big emoji (2-3rem) + label text. Cards have subtle border or background.
   Title above the grid.
 
 "quote" →
-  Giant decorative quotation mark (" " ") as a design element — large, accent color, positioned behind text.
+  Giant decorative quotation mark as a design element — large, accent color, positioned behind text.
   Quote text: large, elegant, italic, centered or left-aligned.
   Attribution: small, below, with a thin decorative rule above it.
 
@@ -338,7 +329,7 @@ Each type gets a DISTINCT, purpose-built layout:
 
 "stats" →
   2-4 stats arranged dramatically. Each stat: number in HUGE font (10-15vw), label in small font below.
-  Arrange in a row or 2×2 grid. Numbers count up from 0 on slide enter (JS).
+  Arrange in a row or 2x2 grid. Numbers count up from 0 on slide enter (JS).
   Background can use a bold color or the signature motif prominently.
 
 "closing" →
@@ -351,10 +342,10 @@ CONTENT RENDERING RULES
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 - NEVER use <ul> or <li> — banned entirely
 - If a slide has "bullets" array, render each as a styled <div> row. Options:
-    • Numbered: large accent-colored number + text side by side
-    • Icon rows: a small square/dot/dash in accent color + text
-    • Pill tags: each bullet as a rounded pill/badge
-    • Card rows: each bullet in its own mini card with subtle background
+    Numbered: large accent-colored number + text side by side
+    Icon rows: a small square/dot/dash in accent color + text
+    Pill tags: each bullet as a rounded pill/badge
+    Card rows: each bullet in its own mini card with subtle background
   Choose whichever fits the overall design aesthetic.
 - "body" text: render as a styled paragraph, large enough to read comfortably
 - accent_word: use this word in the title with accent color highlight
@@ -382,7 +373,7 @@ TECHNICAL REQUIREMENTS
 - Single self-contained HTML file — zero external JS libraries
 - Google Fonts via @import in CSS — allowed
 - Each slide: <div class="slide" id="slide-N"> — only one visible at a time
-- 100vw × 100vh, overflow:hidden on body
+- 100vw x 100vh, overflow:hidden on body
 - All {len(slides_data)} slides must be present and fully rendered
 - Mobile responsive — works on phones
 - File opens by double-clicking in any browser
